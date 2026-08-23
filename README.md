@@ -21,6 +21,12 @@ entirely buys 1.34×, a dispatch costs well under a millisecond, and **~3 ms of
 per-call overhead remains that no amount of tuning removes**. The CPU stays 5.7×
 ahead of the best GPU path.
 
+A [third experiment](#third-experiment-a-model-built-into-the-browser) removed
+JavaScript from the question altogether, putting the model *inside* a browser
+build as a Web API. It does not close the gap either — **the CPU is still 18×
+ahead**, which is the strongest evidence yet that the residual overhead is
+WebGPU's request-response floor rather than anything a page can be blamed for.
+
 See the [performance report](#performance-report) for the numbers, the
 [finding](#finding-the-gpu-is-slower-than-the-cpu) for why, and
 [the experiment](#the-experiment) for how they were measured.
@@ -461,6 +467,110 @@ ordering. Software rasterisation has no dispatch cost to speak of and no real
 parallelism to exploit, which is exactly why those numbers cannot stand in for
 hardware.
 
+## Third experiment: a model built into the browser
+
+The second experiment stripped away the inference runtime and still found ~3 ms
+of per-call overhead it could not attribute. The obvious next question is how
+much of that belongs to JavaScript at all. `browser-model-api.html` answers it by
+removing JavaScript from the inference path entirely.
+
+It calls `navigator.digitclassifier` — a non-standard Web API added to a local
+Chromium build, where the model's architecture, its weights and the WGSL that
+runs them all live inside the browser binary. The page fetches nothing: no wasm
+runtime, no `.tflite`, no shader source. `await model.classify(input)` hands 2352
+floats to C++ inside Blink, which dispatches the same fused single-workgroup
+shader the second experiment settled on and reads one integer back.
+
+This is not a shipping browser feature and is not proposed as one. It exists to
+put a floor under the question: if even an implementation with no JavaScript, no
+download and no runtime cannot beat the CPU, the overhead is structural.
+
+### Results
+
+All three pages measured together on **one locally built Chromium 153 (release)**,
+served over HTTPS from the Pages site, same drawn digit, same harness, same
+fixed-clock protocol, browser restarted between pages, median of 5:
+
+| Implementation | Page | Median | CV | vs CPU |
+| --- | --- | ---: | ---: | ---: |
+| LiteRT.js — **CPU (wasm)** | `index.html` | **0.15 ms** | 12.5% | 1.00× |
+| LiteRT.js — GPU (webgpu) | `index.html` | **1.43 ms** | 55.5% | 9.5× |
+| Direct WebGPU — fused | `webgpu.html` | **2.50 ms** | 45.1% | 16.7× |
+| `navigator.digitclassifier` | `browser-model-api.html` | **2.70 ms** | 8.1% | 18.0× |
+
+Full data, including the debug-build column, is at
+[`docs/measurements/2026-08-23-custom-chromium-three-way.md`](docs/measurements/2026-08-23-custom-chromium-three-way.md).
+
+### The floor is not JavaScript
+
+Moving the implementation from *runtime + JavaScript* to *hand-written JavaScript
+and WGSL* to *entirely C++ inside the browser* leaves every GPU path within
+1.4–2.7 ms while the CPU sits at 0.15 ms. Within a single build, the browser-native
+implementation (2.70 ms) and the hand-written page (2.50 ms) land on the same
+number.
+
+That is the second experiment's residual, arrived at from a direction that shares
+none of its machinery. Whatever the ~3 ms is — command submission, queue latency,
+the `mapAsync` readback round trip — **it is not the page, the language or the
+runtime**, because removing all three does not move it.
+
+**One caveat on the ordering.** LiteRT's WebGPU backend is the *fastest* GPU path
+here, which reverses the second experiment's finding that removing the runtime
+buys 1.34×. With n=5 and CVs of 45–55% on those two rows, that reversal is not
+resolvable — and the two experiments used different browsers. Read the table as
+"every GPU path is 1.4–2.7 ms and the CPU is 0.15 ms", not as a ranking among the
+GPU paths.
+
+### A debug browser can change the answer, not just the timing
+
+The same Chromium built with `is_debug = true` and `dcheck_always_on = true` was
+measured first. It was slower everywhere, as expected — but it also **classified
+the digit differently**: LiteRT.js on WebGPU predicted `4` where the release build
+predicts `1`, five out of five measurements each way, from identical page bytes
+and an identical drawn input.
+
+The first debug run served the pages from the device itself with a local
+`node_modules`, and the release run served them from GitHub Pages with the CDN
+fallback, so build and content source changed together. Re-installing the debug
+APK and re-running it against the same Pages content separated them:
+
+| Build | Content | Prediction |
+| --- | --- | --- |
+| Debug | device `127.0.0.1`, local `node_modules` | `4` |
+| **Debug** | **GitHub Pages, CDN LiteRT** | **`4`** |
+| Release | GitHub Pages, CDN LiteRT | `1` |
+
+The library is not the variable either — local `@litertjs/core` is `2.5.3` and the
+CDN fallback is pinned to `2.5.3`. The browser build is.
+
+The cause is not investigated: one input, one device, one driver, and no isolation
+of whether it originates in Dawn, in LiteRT's delegate, or in a code path that
+exists only when DCHECKs are compiled in. **The transferable part is the warning.**
+A debug browser is a reasonable thing to reach for when instrumenting GPU work,
+and it can mislead about correctness as well as speed.
+
+Timings moved by very different factors, which is its own caution against
+benchmarking on a debug build:
+
+| Implementation | Debug | Release | Speed-up |
+| --- | ---: | ---: | ---: |
+| LiteRT.js — CPU (wasm) | 0.88 ms | 0.15 ms | 5.9× |
+| LiteRT.js — GPU (webgpu) | 8.90 ms | 1.43 ms | 6.2× |
+| Direct WebGPU — fused | 7.30 ms | 2.50 ms | 2.9× |
+| `navigator.digitclassifier` | 3.65 ms | 2.70 ms | 1.35× |
+
+The built-in API gained least because its cost is dominated by the GPU round-trip,
+which does not care how Chromium was compiled. The JavaScript paths gained most
+because their per-call overhead was what the debug build was inflating — enough to
+invert the ordering between the three GPU paths entirely.
+
+### Running the third page
+
+`browser-model-api.html` needs a Chromium build that ships the module, started
+with `--enable-blink-features=DigitClassifier`, and a secure context. In any other
+browser it says which of those three is missing rather than failing silently. The
+other two pages are unaffected and run anywhere.
+
 ## The experiment
 
 **Purpose: to compare the performance of the `wasm` (CPU) and `webgpu` (GPU)
@@ -694,7 +804,7 @@ cross-origin isolated — `serve.js` does not send the required
 | `screenshot.png` | The image at the top, captured on the Android device |
 | `docs/superpowers/specs/` | Design spec for the direct-WebGPU experiment |
 | `docs/superpowers/plans/` | Its implementation plan |
-| `docs/measurements/` | Raw measurement data behind the reported numbers |
+| `docs/measurements/` | Raw measurement data behind the reported numbers, including the [three-way comparison](docs/measurements/2026-08-23-custom-chromium-three-way.md) |
 | `LICENSE` | Apache-2.0 |
 | `.nojekyll` | Stops GitHub Pages running the site through Jekyll |
 
