@@ -1,0 +1,12 @@
+{
+  "name": "webgpu-experiments",
+  "description": "CPU vs GPU inference in the browser: a LiteRT.js benchmark of WebAssembly against WebGPU",
+  "license": "Apache-2.0",
+  "scripts": {
+    "start": "node serve.js"
+  },
+  "dependencies": {
+    "@litertjs/core": "^2.5.3",
+    "@litertjs/model-tester": "^2.5.3"
+  }
+}

@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LiteRT.js MNIST Classifier</title>
+  <style>
+    /* The canvas drives the layout: it shrinks to fit a narrow or a short
+       viewport, and the panel is sized from it, so the whole app fits on
+       screen without scrolling. --chrome is the vertical space everything
+       except the canvas needs; it is measured, not guessed. */
+    :root {
+      --gap: clamp(6px, 1.6vh, 20px);
+      --pad: clamp(10px, 1.8vh, 25px);
+      --chrome: 330px;
+      --canvas: clamp(140px, min(
+                        calc(100vw - 20px - 2 * var(--pad)),
+                        calc(100vh - var(--chrome))), 280px);
+    }
+
+    @supports (height: 100dvh) {
+      /* dvh tracks the collapsing mobile browser toolbar; vh does not. */
+      :root {
+        --canvas: clamp(140px, min(
+                          calc(100vw - 20px - 2 * var(--pad)),
+                          calc(100dvh - var(--chrome))), 280px);
+      }
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #121212;
+      color: #ffffff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      box-sizing: border-box;
+    }
+
+    @supports (height: 100dvh) {
+      body { min-height: 100dvh; }
+    }
+
+    h1 {
+      margin: 0 0 4px;
+      font-size: clamp(1rem, 4.4vw, 1.8rem);
+      text-align: center;
+    }
+
+    p {
+      color: #aaa;
+      margin: 0 0 var(--gap);
+      font-size: clamp(0.72rem, 2.9vw, 1rem);
+      text-align: center;
+      padding: 0 10px;
+    }
+
+    /* Height, not width, is the scarce axis on a short window - trim the
+       vertical furniture rather than letting vw-based type overflow it. */
+    @media (max-height: 700px) {
+      h1 { font-size: clamp(0.9rem, 2.6vh, 1.3rem); }
+      p { font-size: clamp(0.7rem, 2vh, 0.85rem); }
+      #result { min-height: 4.2rem; }
+      .backend-info { min-height: 2.1rem; }
+    }
+
+    @media (max-height: 560px) {
+      p { display: none; }
+    }
+
+    .app-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: #1e1e1e;
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+
+      /* Sized from the canvas plus its borders and the panel padding, so the
+         panel never resizes when the result line grows or shrinks - its width
+         depends only on the viewport. */
+      box-sizing: border-box;
+      width: calc(var(--canvas) + 4px + 2 * var(--pad));
+      gap: var(--gap);
+      padding: var(--pad);
+    }
+
+    /* Visible interactive canvas */
+    #paintCanvas {
+      display: block;
+      width: var(--canvas);
+      height: var(--canvas);
+      border: 2px solid #333;
+      background: #000000;
+      cursor: crosshair;
+      border-radius: 6px;
+      touch-action: none; /* Prevents scrolling while drawing on mobile */
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      width: 100%;
+    }
+
+    button {
+      flex: 1;
+      padding: clamp(7px, 1.3vh, 12px);
+      border: none;
+      border-radius: 6px;
+      font-size: clamp(0.8rem, 3.2vw, 1rem);
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    #clearBtn {
+      background-color: #333;
+      color: #fff;
+    }
+
+    #clearBtn:hover {
+      background-color: #444;
+    }
+
+    #predictBtn {
+      background-color: #007acc;
+      color: #fff;
+    }
+
+    #predictBtn:hover {
+      background-color: #0062a3;
+    }
+
+    .backend {
+      display: flex;
+      width: 100%;
+      gap: 0;
+    }
+
+    .backend button {
+      flex: 1;
+      border-radius: 0;
+      padding: clamp(6px, 1.1vh, 9px);
+      font-size: clamp(0.7rem, 2.7vw, 0.85rem);
+      background-color: #2a2a2a;
+      color: #aaa;
+      border: 1px solid #3a3a3a;
+    }
+
+    .backend button:first-child { border-radius: 6px 0 0 6px; }
+    .backend button:last-child  { border-radius: 0 6px 6px 0; border-left: none; }
+
+    .backend button:hover:not(:disabled):not([aria-pressed="true"]) {
+      background-color: #333;
+      color: #ddd;
+    }
+
+    .backend button[aria-pressed="true"] {
+      background-color: #007acc;
+      border-color: #007acc;
+      color: #fff;
+    }
+
+    .backend button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: progress;
+    }
+
+    #result {
+      margin-top: 0;
+      font-size: clamp(0.95rem, 3.8vw, 1.4rem);
+      font-weight: bold;
+      text-align: center;
+
+      /* Wrap long status lines instead of widening the panel, and hold enough
+         height that the layout does not jump as the text changes length. */
+      width: 100%;
+      min-height: 5rem;
+      overflow-wrap: anywhere;
+    }
+
+    .confidence {
+      display: block;
+      margin-top: 4px;
+      font-size: clamp(0.72rem, 2.9vw, 0.95rem);
+      color: #aaa;
+      font-weight: normal;
+      line-height: 1.4;
+    }
+
+    /* One measurement per line - they are read individually, not as prose. */
+    .timing {
+      display: block;
+    }
+
+    .alt a { color:#4aa3e0; font-size:0.85rem; }
+
+    /* Costs that belong to the active backend rather than to any one
+       classification, so they persist instead of being overwritten by a result. */
+    .backend-info {
+      width: 100%;
+      margin-top: calc(var(--gap) * -0.55);
+      text-align: center;
+      font-size: clamp(0.7rem, 2.7vw, 0.85rem);
+      line-height: 1.45;
+      color: #888;
+      min-height: 2.4rem;
+    }
+  </style>
+
+  <!--
+    @litertjs/core's published bundle still imports the bare specifier
+    "@litertjs/wasm-utils", so the browser needs an import map to resolve it.
+    Both entries point at the local node_modules copy; the CDN is used as a
+    runtime fallback in the script below.
+  -->
+  <script type="importmap">
+    {
+      "imports": {
+        "@litertjs/core": "./node_modules/@litertjs/core/dist/index.js",
+        "@litertjs/wasm-utils": "./node_modules/@litertjs/wasm-utils/dist/index.js"
+      }
+    }
+  </script>
+</head>
+<body>
+
+  <h1>MNIST Handwritten Digit Classifier</h1>
+  <p>Draw a single digit (0-9) clearly in the center of the box</p>
+
+  <div class="app-container">
+    <!-- Visual Canvas for Smooth UI Interaction -->
+    <canvas id="paintCanvas" width="280" height="280"></canvas>
+
+    <!-- Hidden 28x28 Workspace for LiteRT Processing -->
+    <canvas id="mnistCanvas" width="28" height="28" style="display: none;"></canvas>
+
+    <div class="backend" role="group" aria-label="Inference backend">
+      <button id="cpuBtn" type="button" aria-pressed="false">CPU (wasm)</button>
+      <button id="gpuBtn" type="button" aria-pressed="false">GPU (webgpu)</button>
+    </div>
+
+    <div id="backendInfo" class="backend-info"></div>
+
+    <div class="controls">
+      <button id="clearBtn">Clear</button>
+      <button id="predictBtn">Classify Digit</button>
+    </div>
+
+    <div id="result">Draw and click Classify...</div>
+  </div>
+
+  <p class="alt"><a href="./webgpu.html">Direct WebGPU version &rarr;</a></p>
+
+  <script type="module">
+    /* =====================================================================
+       PART 1 - DRAWING
+       Deliberately free of imports and top-level awaits: a failure anywhere
+       in the model code below must never be able to take the canvas down.
+       ===================================================================== */
+
+    const paintCanvas = document.getElementById('paintCanvas');
+    const ctx = paintCanvas.getContext('2d', { willReadFrequently: true });
+    const resultDiv = document.getElementById('result');
+
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth = 18; // Thick enough so it stays legible when downscaled to 28x28
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    let isDrawing = false;
+
+    // Map viewport coordinates onto the canvas bitmap. The scale factor matters
+    // whenever CSS sizes the canvas differently from its width/height attributes
+    // (responsive layouts, browser zoom, pinch zoom).
+    function getCoordinates(e) {
+      const rect = paintCanvas.getBoundingClientRect();
+      return {
+        x: (e.clientX - rect.left) * (paintCanvas.width / rect.width),
+        y: (e.clientY - rect.top) * (paintCanvas.height / rect.height)
+      };
+    }
+
+    function startDrawing(e) {
+      isDrawing = true;
+      // Capture keeps the stroke alive when the pointer wanders off the canvas.
+      try { paintCanvas.setPointerCapture(e.pointerId); } catch { /* synthetic or stale pointer */ }
+      const { x, y } = getCoordinates(e);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x, y); // A single tap should leave a dot, not nothing
+      ctx.stroke();
+    }
+
+    function draw(e) {
+      if (!isDrawing) return;
+      e.preventDefault(); // Stop screen bouncing on mobile
+      const { x, y } = getCoordinates(e);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+    }
+
+    function stopDrawing(e) {
+      if (!isDrawing) return;
+      isDrawing = false;
+      try { paintCanvas.releasePointerCapture(e.pointerId); } catch { /* already released */ }
+    }
+
+    if (window.PointerEvent) {
+      // Pointer events cover mouse, touch and stylus in one code path.
+      paintCanvas.addEventListener('pointerdown', startDrawing);
+      paintCanvas.addEventListener('pointermove', draw);
+      paintCanvas.addEventListener('pointerup', stopDrawing);
+      paintCanvas.addEventListener('pointercancel', stopDrawing);
+    } else {
+      paintCanvas.addEventListener('mousedown', startDrawing);
+      paintCanvas.addEventListener('mousemove', draw);
+      window.addEventListener('mouseup', stopDrawing);
+      paintCanvas.addEventListener('touchstart', e => startDrawing(e.touches[0]));
+      paintCanvas.addEventListener('touchmove', e => { e.preventDefault(); draw(e.touches[0]); });
+      window.addEventListener('touchend', stopDrawing);
+    }
+
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      ctx.clearRect(0, 0, paintCanvas.width, paintCanvas.height);
+      resultDiv.innerHTML = 'Canvas cleared.';
+    });
+
+    /* =====================================================================
+       PART 2 - LITERT.JS MODEL
+       ===================================================================== */
+
+    // Served locally from node_modules, with the CDN as a fallback so the page
+    // also works from a bare checkout. Both are tried at runtime via dynamic
+    // import(), never a static one - a static import that fails to resolve
+    // aborts the whole module, listeners and all.
+    const LITERT_SOURCES = [
+      { lib: '@litertjs/core', wasm: './node_modules/@litertjs/core/wasm/' },
+      { lib: 'https://esm.run/@litertjs/core@2.5.3',
+        wasm: 'https://cdn.jsdelivr.net/npm/@litertjs/core@2.5.3/wasm/' }
+    ];
+    const MODEL_URL = './digit_classifier.tflite';
+
+    const cpuBtn = document.getElementById('cpuBtn');
+    const gpuBtn = document.getElementById('gpuBtn');
+    const predictBtn = document.getElementById('predictBtn');
+    const backendInfo = document.getElementById('backendInfo');
+
+    let litert;          // the module namespace
+    let model;           // CompiledModel for the active backend
+    let accelerator;     // 'wasm' | 'webgpu' - which backend `model` was compiled for
+    let inputShape;
+    let inputChannels;
+    let gpuReady = false;   // a GPUDevice has been handed to LiteRT.js
+    let coldMs;             // cost of the very first inference after a compile
+    let compileMs;          // cost of compiling the model for the active backend
+    let modelBytes;         // the .tflite, fetched once and reused for every compile
+    const timings = {};     // one-time costs, logged as a breakdown
+    let gpuAvailable = false;
+    let busy = false;
+
+    function setBusy(value) {
+      busy = value;
+      cpuBtn.disabled = value;
+      gpuBtn.disabled = value || !gpuAvailable;
+      predictBtn.disabled = value || !model;
+    }
+
+    function paintToggle() {
+      cpuBtn.setAttribute('aria-pressed', String(accelerator === 'wasm'));
+      gpuBtn.setAttribute('aria-pressed', String(accelerator === 'webgpu'));
+    }
+
+    // LiteRT.js will not accept the 'webgpu' accelerator until it has been given
+    // a real GPUDevice. Acquire one lazily, and only once - the device is reused
+    // across every later switch back to GPU.
+    async function ensureGpuDevice() {
+      if (gpuReady) return true;
+      if (!litert.isWebGPUSupported()) return false;
+      const adapter = await navigator.gpu.requestAdapter();
+      if (!adapter) return false;
+      litert.setWebGpuDevice(await adapter.requestDevice());
+      gpuReady = true;
+      return true;
+    }
+
+    // Compile for `target`, replacing whatever is currently loaded. Throws if the
+    // backend cannot compile the model; the caller decides how to recover.
+    async function compileFor(target) {
+      if (target === 'webgpu' && !(await ensureGpuDevice())) {
+        throw new Error('No WebGPU device is available.');
+      }
+
+      // Discard the previous CompiledModel before building the new one.
+      model?.delete();
+      model = undefined;
+
+      // Compile from the bytes fetched at startup rather than from the URL.
+      // loadAndCompile accepts either, but handing it a Uint8Array keeps the
+      // download out of the measurement - and stops every backend switch from
+      // re-fetching the same 1.2 MB.
+      const compileStarted = performance.now();
+      model = await litert.loadAndCompile(modelBytes, { accelerator: target });
+      compileMs = performance.now() - compileStarted;
+      accelerator = target;
+
+      // Read the real tensor layout off the model instead of hard-coding it.
+      // This model declares [1, 28, 28, 3], i.e. 2352 RGB floats - not the 784
+      // grayscale values MNIST examples usually assume.
+      inputShape = Array.from(model.getInputDetails()[0].shape);
+      inputChannels = inputShape.reduce((a, b) => a * b, 1) / (28 * 28);
+
+      // The first inference after a compile pays one-time costs the later ones do
+      // not (shader compilation, buffer allocation, kernel selection). Time it on
+      // its own and report it separately, so those costs are visible instead of
+      // being smeared into the steady-state average.
+      const coldStarted = performance.now();
+      await runOnce(new Float32Array(28 * 28 * inputChannels));
+      coldMs = performance.now() - coldStarted;
+      paintBackendInfo();
+
+      paintToggle();
+    }
+
+    async function switchTo(target) {
+      if (busy || target === accelerator) return;
+
+      const previous = accelerator;
+      setBusy(true);
+      resultDiv.innerText = `Switching to ${label(target)}...`;
+      // The old backend's figures do not describe the new one.
+      backendInfo.innerHTML = '<span class="timing">compiling...</span>';
+
+      try {
+        await compileFor(target);
+        resultDiv.innerText = `Ready on ${label(target)}.`;
+      } catch (err) {
+        console.error(`Could not switch to ${target}.`, err);
+        // Never leave the page with no usable model: go back to what worked.
+        try {
+          await compileFor(previous);
+          resultDiv.innerText = `${label(target)} unavailable - staying on ${label(previous)}.`;
+        } catch (fallbackErr) {
+          console.error(fallbackErr);
+          model = undefined;
+          resultDiv.innerText = 'Model unavailable. Check the console.';
+        }
+      } finally {
+        paintToggle();
+        setBusy(false);
+      }
+    }
+
+    function label(target) {
+      return target === 'webgpu' ? 'GPU (webgpu)' : 'CPU (wasm)';
+    }
+
+    cpuBtn.addEventListener('click', () => switchTo('wasm'));
+    gpuBtn.addEventListener('click', () => switchTo('webgpu'));
+
+    async function initModel() {
+      resultDiv.innerText = 'Loading LiteRT Model...';
+      setBusy(true);
+
+      let lastErr;
+      for (const source of LITERT_SOURCES) {
+        try {
+          const runtimeStarted = performance.now();
+          litert = await import(/* @vite-ignore */ source.lib);
+          await litert.loadLiteRt(source.wasm);
+          // Runtime init is dominated by fetching a ~9 MB .wasm, so this figure
+          // is mostly network and is reported apart from the compile cost.
+          timings.runtimeInitMs = performance.now() - runtimeStarted;
+          break;
+        } catch (err) {
+          lastErr = err;
+          litert = undefined;
+        }
+      }
+      if (!litert) throw lastErr;
+
+      // Fetch the model once, up front, so that compiling it later measures
+      // compilation alone. This is the network cost being excluded.
+      const fetchStarted = performance.now();
+      const response = await fetch(MODEL_URL);
+      if (!response.ok) throw new Error(`Could not fetch ${MODEL_URL}: ${response.status}`);
+      modelBytes = new Uint8Array(await response.arrayBuffer());
+      timings.modelFetchMs = performance.now() - fetchStarted;
+      timings.modelBytes = modelBytes.byteLength;
+
+      // Probe the GPU once up front so an unavailable backend shows as a
+      // disabled button with a reason, rather than a button that fails on click.
+      gpuAvailable = await ensureGpuDevice().catch(() => false);
+      if (!gpuAvailable) {
+        gpuBtn.title = litert.isWebGPUSupported()
+          ? 'No WebGPU adapter available in this browser.'
+          : 'This browser does not support WebGPU.';
+      }
+
+      // Prefer the GPU when it is there, otherwise the XNNPack/WASM CPU backend.
+      // A GPU that reports a device can still fail to compile this model, so
+      // fall back to the CPU rather than leaving the page with nothing.
+      if (gpuAvailable) {
+        try {
+          await compileFor('webgpu');
+        } catch (err) {
+          console.warn('WebGPU compile failed, falling back to the CPU backend.', err);
+          gpuAvailable = false;
+          gpuBtn.title = 'This model could not be compiled for WebGPU.';
+        }
+      }
+      if (!model) await compileFor('wasm');
+
+      timings.compileMs = compileMs;
+      timings.firstInferenceMs = coldMs;
+      timings.accelerator = accelerator;
+      console.log('LiteRT startup breakdown (ms):', timings);
+
+      resultDiv.innerText = `Ready on ${label(accelerator)}.`;
+      setBusy(false);
+    }
+
+    // Downsample the 280x280 drawing to the 28x28 grayscale matrix MNIST expects,
+    // normalizing it the way MNIST itself was built: each digit is size-fit into
+    // a 20x20 box and then centred in the 28x28 frame by centre of mass - not by
+    // bounding box, and not by a naive full-canvas downscale. A stroke sitting
+    // off-centre, or filling the full canvas height - what a finger naturally
+    // draws - is well outside that distribution without this step.
+    function preprocessCanvas(channels) {
+      const hiddenCanvas = document.getElementById('mnistCanvas');
+      const hiddenCtx = hiddenCanvas.getContext('2d', { willReadFrequently: true });
+
+      // --- ink check, must run before any bounding-box work: an empty canvas
+      // has no bounding box. This reuses the original naive downscale purely to
+      // decide whether anything was drawn at all; the real tensor is built below
+      // from the centred version once we know there is ink to centre.
+      //
+      // Paint an opaque black background first. The strokes are anti-aliased, so
+      // their edge pixels are partially transparent white; reading them straight
+      // out of a transparent canvas yields RGB 255 with a low alpha, which would
+      // turn every soft edge into a fully-lit pixel.
+      hiddenCtx.globalCompositeOperation = 'source-over';
+      hiddenCtx.fillStyle = 'black';
+      hiddenCtx.fillRect(0, 0, 28, 28);
+      hiddenCtx.drawImage(paintCanvas, 0, 0, paintCanvas.width, paintCanvas.height, 0, 0, 28, 28);
+
+      const naiveData = hiddenCtx.getImageData(0, 0, 28, 28).data;
+      let ink = 0;
+      for (let i = 0; i < naiveData.length; i += 4) {
+        ink += (0.299 * naiveData[i] + 0.587 * naiveData[i + 1] + 0.114 * naiveData[i + 2]) / 255.0;
+      }
+
+      const inputBuffer = new Float32Array(28 * 28 * channels);
+      if (ink < 1) return { inputBuffer, ink };
+
+      // --- 1. Bounding box of the ink on the full-resolution canvas.
+      // Composited over black by hand (grayscale * alpha) rather than via a
+      // second canvas - this pass only needs the box, not a resampled bitmap.
+      // The box is inclusive of both edges, so even a single lit pixel yields a
+      // 1x1 (not zero-area) box, which keeps the scale step below from ever
+      // dividing by zero.
+      const W = paintCanvas.width, H = paintCanvas.height;
+      const raw = ctx.getImageData(0, 0, W, H).data;
+      const BOX_THRESHOLD = 0.02; // ignore near-invisible anti-aliasing dust
+      let minX = W, minY = H, maxX = -1, maxY = -1;
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          const i = (y * W + x) * 4;
+          const a = raw[i + 3] / 255;
+          const gray = (0.299 * raw[i] + 0.587 * raw[i + 1] + 0.114 * raw[i + 2]) / 255;
+          if (gray * a > BOX_THRESHOLD) {
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+          }
+        }
+      }
+      // The ink >= 1 check above should make this unreachable; fall back to a
+      // blank frame rather than let an empty box reach the division below.
+      if (maxX < minX || maxY < minY) return { inputBuffer, ink: 0 };
+
+      const boxW = maxX - minX + 1;
+      const boxH = maxY - minY + 1;
+
+      // --- 2. Scale that region so its longest side is 20px, preserving aspect.
+      const scale = 20 / Math.max(boxW, boxH);
+      const scaledW = Math.max(1, Math.round(boxW * scale));
+      const scaledH = Math.max(1, Math.round(boxH * scale));
+
+      const cropCanvas = document.createElement('canvas');
+      cropCanvas.width = scaledW;
+      cropCanvas.height = scaledH;
+      const cropCtx = cropCanvas.getContext('2d', { willReadFrequently: true });
+      // Same black-fill-before-drawImage reasoning as above: the crop is
+      // composited over black so anti-aliased edges read back correctly.
+      cropCtx.fillStyle = 'black';
+      cropCtx.fillRect(0, 0, scaledW, scaledH);
+      cropCtx.drawImage(paintCanvas, minX, minY, boxW, boxH, 0, 0, scaledW, scaledH);
+      const scaledData = cropCtx.getImageData(0, 0, scaledW, scaledH).data;
+
+      // --- 3. Centre of mass of the scaled bitmap, intensity-weighted.
+      let mass = 0, sumX = 0, sumY = 0;
+      for (let y = 0; y < scaledH; y++) {
+        for (let x = 0; x < scaledW; x++) {
+          const i = (y * scaledW + x) * 4;
+          const v = (0.299 * scaledData[i] + 0.587 * scaledData[i + 1] + 0.114 * scaledData[i + 2]) / 255;
+          mass += v;
+          sumX += v * x;
+          sumY += v * y;
+        }
+      }
+      const comX = mass > 0 ? sumX / mass : scaledW / 2;
+      const comY = mass > 0 ? sumY / mass : scaledH / 2;
+
+      // --- 4. Paste into the 28x28 frame so the centre of mass lands at
+      // (14, 14), clamping so the pasted region stays inside the frame.
+      const destX = Math.min(Math.max(Math.round(14 - comX), 0), 28 - scaledW);
+      const destY = Math.min(Math.max(Math.round(14 - comY), 0), 28 - scaledH);
+
+      hiddenCtx.fillStyle = 'black';
+      hiddenCtx.fillRect(0, 0, 28, 28);
+      hiddenCtx.drawImage(cropCanvas, destX, destY);
+
+      const data = hiddenCtx.getImageData(0, 0, 28, 28).data;
+      let w = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        const grayscale = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+        const value = grayscale / 255.0; // Normalize to [0.0, 1.0]
+        // The strokes are white on black, so every channel carries the same
+        // value; writing it `channels` times gives the NHWC layout the model wants.
+        for (let c = 0; c < channels; c++) inputBuffer[w++] = value;
+      }
+
+      return { inputBuffer, ink };
+    }
+
+    // performance.now() is clamped to coarse steps (1 ms in a page that is not
+    // cross-origin isolated), and one inference on this small model finishes
+    // well inside that. A single run therefore cannot be timed directly - it
+    // reads as exactly 0 - so the runs after the first are repeated until the
+    // total is measurable and reported as a mean.
+    const TIMING_MIN_MS = 5;
+    const TIMING_MAX_RUNS = 50;
+
+    // Renders a duration, admitting when it fell below the clock's resolution
+    // rather than printing a confident "0.00 ms".
+    function ms(value) {
+      return value > 0 ? `${value.toFixed(2)} ms` : '<1 ms';
+    }
+
+    // "cold start" rather than "first inference": the result line reports the
+    // first run of a classification, and two different metrics both called
+    // "first" in the same place is what made this number look like it changed.
+    function paintBackendInfo() {
+      backendInfo.innerHTML =
+        `<span class="timing">compile ${ms(compileMs)}</span>` +
+        `<span class="timing">cold start ${ms(coldMs)}</span>`;
+    }
+
+    // One inference: upload the tensor, run it, read the output back.
+    async function runOnce(inputBuffer) {
+      let inputTensor, outputs;
+      try {
+        inputTensor = new litert.Tensor(inputBuffer, inputShape);
+        // Positional call - avoids depending on the model's input tensor names.
+        outputs = await model.run(inputTensor);
+        return Array.from(await outputs[0].data());
+      } finally {
+        // LiteRT.js uses manual memory management.
+        inputTensor?.delete();
+        outputs?.forEach(t => t.delete());
+      }
+    }
+
+    // Times the runs after the first. The first run of a classification still
+    // carries a small penalty the later ones do not (caches, allocations that do
+    // not survive between clicks), and folding that into a small sample skews the
+    // figure, so it runs as an untimed warm-up and is left out of the mean. The
+    // genuinely cold first inference is measured once per compile instead, and
+    // reported separately as "cold start".
+    async function infer(inputBuffer) {
+      let values = await runOnce(inputBuffer);
+
+      const started = performance.now();
+      let runs = 0;
+      let elapsed = 0;
+
+      do {
+        values = await runOnce(inputBuffer);
+        runs++;
+        elapsed = performance.now() - started;
+      } while (elapsed < TIMING_MIN_MS && runs < TIMING_MAX_RUNS - 1);
+
+      return { values, mean: elapsed / runs, runs };
+    }
+
+    function toProbabilities(values) {
+      const sum = values.reduce((a, b) => a + b, 0);
+      if (Math.abs(sum - 1) < 0.01) return values; // Model already applies softmax
+      const max = Math.max(...values);
+      const exps = values.map(v => Math.exp(v - max));
+      const expSum = exps.reduce((a, b) => a + b, 0);
+      return exps.map(v => v / expSum);
+    }
+
+    predictBtn.addEventListener('click', async () => {
+      if (!model || busy) {
+        resultDiv.innerText = 'Model is not ready yet, please wait...';
+        return;
+      }
+
+      const { inputBuffer, ink } = preprocessCanvas(inputChannels);
+      if (ink < 1) {
+        resultDiv.innerText = 'Draw a digit first.';
+        return;
+      }
+
+      const ranOn = accelerator;
+      setBusy(true);
+      resultDiv.innerText = 'Classifying...';
+
+      try {
+        const { values, mean, runs } = await infer(inputBuffer);
+        const probabilities = toProbabilities(values);
+
+        const predictedDigit = probabilities.indexOf(Math.max(...probabilities));
+        const confidence = probabilities[predictedDigit];
+
+        resultDiv.innerHTML = `Predicted: <strong>${predictedDigit}</strong> ` +
+          `<span class="confidence">` +
+            `<span class="timing">(${(confidence * 100).toFixed(1)}% match)</span>` +
+            `<span class="timing">${ms(mean)} on ${ranOn}` +
+            `${runs > 1 ? ` (mean of ${runs})` : ''}</span>` +
+          `</span>`;
+      } catch (err) {
+        console.error(err);
+        resultDiv.innerText = 'Inference failed. Check the console.';
+      } finally {
+        setBusy(false);
+      }
+    });
+
+    // Kick off model loading, but never let it break the drawing UI.
+    initModel().catch(err => {
+      console.error(err);
+      resultDiv.innerText = 'Model failed to load - drawing still works. Check the console.';
+    });
+  </script>
+</body>
+</html>
