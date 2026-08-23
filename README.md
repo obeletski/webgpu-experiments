@@ -878,6 +878,7 @@ cross-origin isolated — `serve.js` does not send the required
 | `docs/superpowers/plans/` | Its implementation plan |
 | `docs/measurements/` | Raw measurement data behind the reported numbers, including the [three-way comparison](docs/measurements/2026-08-23-custom-chromium-three-way.md) |
 | `LICENSE` | Apache-2.0 |
+| `CLAUDE.md` | Guidance for Claude Code: the rules that keep the three pages comparable |
 | `.nojekyll` | Stops GitHub Pages running the site through Jekyll |
 
 ## License
