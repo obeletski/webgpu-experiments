@@ -2,9 +2,17 @@
 
 **Date** 2026-08-23/24 · **Device** OnePlus 13 (`CPH2653`, Snapdragon 8 Elite,
 Adreno 830, Android 16 / API 36) · **Browser** a locally built Chromium
-**153.0.8005.0**, measured in **both** a release and a debug configuration ·
-**Content** served from <https://obeletski.github.io/webgpu-experiments/> over
-HTTPS.
+**153.0.8005.0** (`org.chromium.chrome`), measured in **both** a release and a
+debug configuration · **Content** served from
+<https://obeletski.github.io/webgpu-experiments/> over HTTPS.
+
+> [!NOTE]
+> The device also carries **stock Chrome 150.0.7871.188** (`com.android.chrome`),
+> which is what every other measurement in this repository used. Nothing here was
+> measured on it. The two browsers are three milestones apart and this one is not
+> an official build, so figures in this file cannot be compared with figures in
+> [`2026-08-23-android-webgpu.json`](2026-08-23-android-webgpu.json) or the
+> README's first two experiments.
 
 All three pages in this repository run the same model. This measures them
 against the same drawn digit with the same timing harness, under the fixed-clock
@@ -29,6 +37,7 @@ uses.
 - [One-time costs](#one-time-costs)
 - [Protocol](#protocol)
 - [Raw data](#raw-data)
+- [Re-measurement at a 50 ms timing budget](#re-measurement-at-a-50-ms-timing-budget)
 - [Caveats](#caveats)
 
 ---
@@ -217,6 +226,43 @@ navigator.digitclassifier     6.30 (1)   7.20 (1)   3.05 (2)   3.05 (2)   3.65 (
 
 Predictions were `1` for every measurement except LiteRT.js — GPU (webgpu) on the
 debug build, which returned `4` on all five.
+
+---
+
+## Re-measurement at a 50 ms timing budget
+
+The table above under-samples its own GPU rows: at the default `TIMING_MIN_MS` of
+5 ms, a path costing 2–3 ms per call is averaged over one to three internal runs.
+Both pages now accept `?timing_min_ms=50&timing_max_runs=200`, defaults unchanged.
+Re-run on the same release build with a 50 ms budget and **15 samples** each:
+
+| | n | Median | Mean | SD | CV | Range | Internal runs |
+| --- | ---: | ---: | ---: | ---: | ---: | --- | --- |
+| LiteRT.js — GPU (webgpu) | 15 | **1.81 ms** | 1.84 | 0.194 | **10.6%** | 1.48 – 2.17 | 23–34 |
+| Direct WebGPU — fused | 15 | **3.13 ms** | 3.13 | 0.114 | **3.6%** | 2.98 – 3.33 | 15–17 |
+
+The distributions do not overlap: LiteRT's slowest sample is below the
+hand-written page's fastest. U = 225 of 225, permutation two-sided p < 0.00001
+over 200,000 resamples. LiteRT.js is **1.73×** faster on this browser.
+
+Raising the budget collapsed the noise (CV 55.5% → 10.6% and 45.1% → 3.6%) *and*
+moved the medians (1.43 → 1.81, 2.50 → 3.13), so the 5 ms budget was biasing the
+central estimate rather than only widening its spread. Every 5-measurement figure
+in this file was taken at 5 ms and carries that defect.
+
+```
+LiteRT.js — GPU     1.95 (26)  1.73 (29)  1.94 (26)  1.81 (28)  2.00 (25)
+                    2.17 (23)  1.97 (27)  1.48 (34)  1.53 (33)  1.76 (29)
+                    2.00 (26)  1.63 (31)  1.76 (29)  2.01 (25)  1.79 (28)
+
+Direct WebGPU       3.21 (16)  3.16 (16)  3.24 (16)  3.25 (16)  3.06 (17)
+                    2.98 (17)  3.04 (17)  3.15 (17)  3.06 (17)  3.33 (15)
+                    2.98 (17)  3.08 (17)  3.30 (16)  3.13 (16)  3.02 (17)
+```
+
+Every sample predicted `1`. Why LiteRT.js is faster is not established: its
+readback (`@litertjs/core` `dist/index.js:1628`) is the same
+`copyBufferToBuffer` → `submit` → `await mapAsync` sequence `webgpu.html` uses.
 
 ---
 

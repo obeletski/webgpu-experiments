@@ -22,10 +22,29 @@ per-call overhead remains that no amount of tuning removes**. The CPU stays 5.7�
 ahead of the best GPU path.
 
 A [third experiment](#third-experiment-a-model-built-into-the-browser) removed
-JavaScript from the question altogether, putting the model *inside* a browser
-build as a Web API. It does not close the gap either — **the CPU is still 18×
-ahead**, which is the strongest evidence yet that the residual overhead is
-WebGPU's request-response floor rather than anything a page can be blamed for.
+JavaScript from the question altogether, putting the model *inside* a custom
+Chromium build as a Web API. It does not close the gap either — **the CPU is
+still 18× ahead**, which is the strongest evidence yet that the residual overhead
+is WebGPU's request-response floor rather than anything a page can be blamed for.
+That experiment runs on a different browser from the two above, and its numbers
+are kept separate throughout.
+
+### Two browsers, deliberately kept apart
+
+Both are installed on the same OnePlus CPH2653, and **their numbers are never
+mixed in one table**:
+
+| | Browser | Used by |
+| --- | --- | --- |
+| **Stock** | Chrome **150.0.7871.188** (`com.android.chrome`) | the [performance report](#performance-report), the [finding](#finding-the-gpu-is-slower-than-the-cpu), the [second experiment](#second-experiment-direct-webgpu) |
+| **Custom** | locally built Chromium **153.0.8005.0** release (`org.chromium.chrome`) | the [third experiment](#third-experiment-a-model-built-into-the-browser) |
+
+The custom build is the only one that can run `browser-model-api.html` at all —
+`navigator.digitclassifier` does not exist in a shipping browser. It is three
+milestones newer than the stock Chrome, and not an official build, so **a figure
+from one section cannot be compared with a figure from the other.** Comparisons
+within a section are sound; across sections they are not, and where the two
+disagree that is called out rather than reconciled.
 
 See the [performance report](#performance-report) for the numbers, the
 [finding](#finding-the-gpu-is-slower-than-the-cpu) for why, and
@@ -33,9 +52,14 @@ See the [performance report](#performance-report) for the numbers, the
 
 ## Performance report
 
-Measured on a **OnePlus CPH2653** (Android 16, Chrome 150, real GPU), with the
-device held at a fixed clock — see [method](#getting-numbers-that-reproduce).
-3 runs × 5 measurements per backend, GPU first then CPU in every run.
+Measured on a **OnePlus CPH2653** (Android 16, real GPU) running **stock Chrome
+150.0.7871.188**, with the device held at a fixed clock — see
+[method](#getting-numbers-that-reproduce). 3 runs × 5 measurements per backend,
+GPU first then CPU in every run.
+
+> These are stock-Chrome numbers. The custom-Chromium ones live in the
+> [third experiment](#third-experiment-a-model-built-into-the-browser) and are
+> kept separate on purpose — see [two browsers](#two-browsers-deliberately-kept-apart).
 
 ### One-time costs, paid before a backend can classify anything
 
@@ -102,8 +126,17 @@ window, and taking the **median of 5** measurements per run:
 5.55 and 4.75 ms, so DVFS was never what made the GPU noisy. The remaining
 suspects are GPU queue scheduling and under-sampling: a single GPU inference
 already exceeds the harness's 5 ms timing budget, so each GPU figure averages
-only 1–2 internal runs where the CPU averages ~9. Raising `TIMING_MIN_MS` is the
-open fix.
+only 1–2 internal runs where the CPU averages ~9.
+
+**Under-sampling was the culprit, and it is now fixed.** Both pages accept
+`?timing_min_ms=50&timing_max_runs=200`; the defaults are unchanged so every
+number already published stays comparable. At a 50 ms budget the GPU noise
+collapses — **CV 49% → 3.6%** for the direct-WebGPU page — and the medians move
+too, so the small budget was biasing the estimate rather than only widening it.
+Every GPU figure in the stock-Chrome sections above was measured at 5 ms and
+carries that defect; the
+[re-measurement](#re-measured-the-ordering-really-does-invert) is on the custom
+build only.
 
 For comparison, desktop headless Chrome with a **SwiftShader software** GPU gave
 CPU 0.14 ms against GPU ~4.4 ms. Treat that GPU column as a lower bound on GPU
@@ -349,8 +382,8 @@ confidence delta of 0.00.
 
 ### Results
 
-OnePlus CPH2653, real mobile GPU, clocks pinned with
-`set-fixed-performance-mode-enabled`, 3 runs × 5 measurements per mode, fused
+OnePlus CPH2653, real mobile GPU, **stock Chrome 150.0.7871.188**, clocks pinned
+with `set-fixed-performance-mode-enabled`, 3 runs × 5 measurements per mode, fused
 first every run.
 
 Steady state is 15 measurements per mode (3 runs × 5); **the median, spread and
@@ -487,9 +520,10 @@ download and no runtime cannot beat the CPU, the overhead is structural.
 
 ### Results
 
-All three pages measured together on **one locally built Chromium 153 (release)**,
-served over HTTPS from the Pages site, same drawn digit, same harness, same
-fixed-clock protocol, browser restarted between pages, median of 5:
+All three pages measured together on the **custom Chromium 153.0.8005.0 (release)**
+— *not* the stock Chrome the earlier sections use — served over HTTPS from the
+Pages site, same drawn digit, same harness, same fixed-clock protocol, browser
+restarted between pages, median of 5:
 
 | Implementation | Page | Median | CV | vs CPU |
 | --- | --- | ---: | ---: | ---: |
@@ -515,11 +549,49 @@ the `mapAsync` readback round trip — **it is not the page, the language or the
 runtime**, because removing all three does not move it.
 
 **One caveat on the ordering.** LiteRT's WebGPU backend is the *fastest* GPU path
-here, which reverses the second experiment's finding that removing the runtime
-buys 1.34×. With n=5 and CVs of 45–55% on those two rows, that reversal is not
-resolvable — and the two experiments used different browsers. Read the table as
-"every GPU path is 1.4–2.7 ms and the CPU is 0.15 ms", not as a ranking among the
-GPU paths.
+here, which is the opposite of the second experiment's finding that removing the
+runtime buys 1.34×. At n=5 with CVs of 45–55% those two rows could not settle it,
+so it was re-measured — see below.
+
+### Re-measured: the ordering really does invert
+
+The table above under-samples its own GPU rows. The harness repeats an inference
+until `TIMING_MIN_MS` accumulates, so at the default 5 ms budget a path costing
+2–3 ms per call is averaged over one to three internal runs. Both pages now accept
+`?timing_min_ms=50&timing_max_runs=200`, which fixes that without changing any
+default. Re-run at a 50 ms budget, 15 samples each, custom Chromium 153 release:
+
+| | n | Median | Mean | SD | CV | Range | Internal runs |
+| --- | ---: | ---: | ---: | ---: | ---: | --- | --- |
+| LiteRT.js — GPU (webgpu) | 15 | **1.81 ms** | 1.84 | 0.194 | **10.6%** | 1.48 – 2.17 | 23–34 |
+| Direct WebGPU — fused | 15 | **3.13 ms** | 3.13 | 0.114 | **3.6%** | 2.98 – 3.33 | 15–17 |
+
+**The distributions do not overlap.** LiteRT's slowest sample (2.17 ms) is below
+the hand-written page's fastest (2.98 ms); U = 225 of a possible 225, permutation
+p < 0.00001 over 200,000 resamples. On this browser LiteRT.js is **1.73× faster**
+than the hand-written page.
+
+Raising the budget is what made the question answerable at all. It collapsed the
+noise — **CV 55.5% → 10.6%** and **45.1% → 3.6%** — and moved the medians as well
+(1.43 → 1.81 and 2.50 → 3.13), so the 5 ms budget was biasing the estimate, not
+merely widening it.
+
+**Why LiteRT.js is faster here is not established.** The obvious explanation does
+not survive contact with the source: LiteRT's readback (`@litertjs/core`
+`dist/index.js:1628`) is the same `copyBufferToBuffer` → `submit` → `await
+mapAsync` sequence `webgpu.html` uses, and it issues the copy in its own encoder
+and submit where `webgpu.html` folds it into the compute pass's. The one visible
+difference is that LiteRT allocates a fresh `MAP_READ` buffer per readback while
+`webgpu.html` maps and unmaps one persistent buffer every call, which could
+serialise behind the previous unmap — a hypothesis, testable by switching `run()`
+to a fresh buffer and re-measuring.
+
+**This does not overturn the 1.34× figure, but it does put it in doubt.** That
+figure was measured on stock Chrome 150 at the same 5 ms budget, with LiteRT's GPU
+row at CV 49.1% — the identical under-sampling defect this re-run exposed. It
+needs re-measuring at a 50 ms budget on stock Chrome before it can be trusted, and
+only then will it be clear whether the inversion is a browser difference or was
+never there.
 
 ### A debug browser can change the answer, not just the timing
 
