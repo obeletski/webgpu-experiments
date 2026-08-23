@@ -781,8 +781,17 @@ fn main() {
     // cross-origin isolated) and one inference finishes well inside that, so a
     // single run cannot be timed directly. Repeat until the total is measurable
     // and report the mean.
-    const TIMING_MIN_MS = 5;
-    const TIMING_MAX_RUNS = 50;
+    // Overridable from the URL so a run can be re-sampled without editing the
+    // page: ?timing_min_ms=50&timing_max_runs=200. The defaults are what every
+    // published measurement in this repository used, so leaving them alone keeps
+    // new numbers comparable with old ones.
+    const TIMING_PARAMS = new URLSearchParams(location.search);
+    const timingParam = (name, fallback) => {
+      const v = Number(TIMING_PARAMS.get(name));
+      return Number.isFinite(v) && v > 0 ? v : fallback;
+    };
+    const TIMING_MIN_MS = timingParam('timing_min_ms', 5);
+    const TIMING_MAX_RUNS = timingParam('timing_max_runs', 50);
 
     // Renders a duration, admitting when it fell below the clock's resolution
     // rather than printing a confident "0.00 ms".
