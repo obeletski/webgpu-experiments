@@ -690,6 +690,7 @@ cross-origin isolated — `serve.js` does not send the required
 | `serve.js` | Zero-dependency static server |
 | `digit_classifier.tflite` | The model |
 | `webgpu.html` | Second experiment: the same model driven directly against the WebGPU API |
+| `browser-model-api.html` | Third experiment: the same model behind `navigator.digitclassifier`, a browser-built-in API |
 | `screenshot.png` | The image at the top, captured on the Android device |
 | `docs/superpowers/specs/` | Design spec for the direct-WebGPU experiment |
 | `docs/superpowers/plans/` | Its implementation plan |

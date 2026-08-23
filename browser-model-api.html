@@ -3,16 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LiteRT.js MNIST Classifier</title>
+  <title>navigator.digitclassifier MNIST Classifier</title>
   <style>
-    /* The canvas drives the layout: it shrinks to fit a narrow or a short
-       viewport, and the panel is sized from it, so the whole app fits on
-       screen without scrolling. --chrome is the vertical space everything
-       except the canvas needs; it is measured, not guessed. */
+    /* Layout follows index.html: the canvas drives it, shrinking to fit a
+       narrow or short viewport, and the panel is sized from it so the whole
+       app fits on screen without scrolling. --chrome is the vertical space
+       everything except the canvas needs. It is smaller here than on the other
+       two pages because there is no backend switcher row - this page has only
+       one backend, which is the entire point of it. */
     :root {
       --gap: clamp(6px, 1.6vh, 20px);
       --pad: clamp(10px, 1.8vh, 25px);
-      --chrome: 330px;
+      --chrome: 290px;
       --canvas: clamp(140px, min(
                         calc(100vw - 20px - 2 * var(--pad)),
                         calc(100vh - var(--chrome))), 280px);
@@ -64,11 +66,11 @@
       h1 { font-size: clamp(0.9rem, 2.6vh, 1.3rem); }
       p { font-size: clamp(0.7rem, 2vh, 0.85rem); }
       #result { min-height: 4.2rem; }
-      .backend-info { min-height: 2.1rem; }
+      .api-info { min-height: 2.1rem; }
     }
 
     @media (max-height: 560px) {
-      p { display: none; }
+      p.tagline { display: none; }
     }
 
     .app-container {
@@ -80,8 +82,7 @@
       box-shadow: 0 8px 24px rgba(0,0,0,0.5);
 
       /* Sized from the canvas plus its borders and the panel padding, so the
-         panel never resizes when the result line grows or shrinks - its width
-         depends only on the viewport. */
+         panel never resizes when the result line grows or shrinks. */
       box-sizing: border-box;
       width: calc(var(--canvas) + 4px + 2 * var(--pad));
       gap: var(--gap);
@@ -135,41 +136,6 @@
       background-color: #0062a3;
     }
 
-    .backend {
-      display: flex;
-      width: 100%;
-      gap: 0;
-    }
-
-    .backend button {
-      flex: 1;
-      border-radius: 0;
-      padding: clamp(6px, 1.1vh, 9px);
-      font-size: clamp(0.7rem, 2.7vw, 0.85rem);
-      background-color: #2a2a2a;
-      color: #aaa;
-      border: 1px solid #3a3a3a;
-    }
-
-    .backend button:first-child { border-radius: 6px 0 0 6px; }
-    .backend button:last-child  { border-radius: 0 6px 6px 0; border-left: none; }
-
-    .backend button:hover:not(:disabled):not([aria-pressed="true"]) {
-      background-color: #333;
-      color: #ddd;
-    }
-
-    .backend button[aria-pressed="true"] {
-      background-color: #007acc;
-      border-color: #007acc;
-      color: #fff;
-    }
-
-    .backend button:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-    }
-
     button:disabled {
       opacity: 0.5;
       cursor: progress;
@@ -203,10 +169,11 @@
     }
 
     .alt a { color:#4aa3e0; font-size:0.85rem; }
+    .alt { margin-top: var(--gap); }
 
-    /* Costs that belong to the active backend rather than to any one
-       classification, so they persist instead of being overwritten by a result. */
-    .backend-info {
+    /* Costs that belong to acquiring the model rather than to any one
+       classification, so they persist instead of being overwritten. */
+    .api-info {
       width: 100%;
       margin-top: calc(var(--gap) * -0.55);
       text-align: center;
@@ -215,41 +182,51 @@
       color: #888;
       min-height: 2.4rem;
     }
-  </style>
 
-  <!--
-    @litertjs/core's published bundle still imports the bare specifier
-    "@litertjs/wasm-utils", so the browser needs an import map to resolve it.
-    Both entries point at the local node_modules copy; the CDN is used as a
-    runtime fallback in the script below.
-  -->
-  <script type="importmap">
-    {
-      "imports": {
-        "@litertjs/core": "./node_modules/@litertjs/core/dist/index.js",
-        "@litertjs/wasm-utils": "./node_modules/@litertjs/wasm-utils/dist/index.js"
-      }
+    /* Shown only when the API is missing. It has to explain three separate
+       requirements, so it is prose rather than a one-line status. */
+    .unsupported {
+      display: none;
+      width: 100%;
+      box-sizing: border-box;
+      background: #2a1f1f;
+      border: 1px solid #5a3535;
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-size: clamp(0.7rem, 2.7vw, 0.85rem);
+      line-height: 1.5;
+      color: #d7b9b9;
+      text-align: left;
     }
-  </script>
+
+    .unsupported.shown { display: block; }
+    .unsupported strong { color: #f0d0d0; }
+    .unsupported code {
+      background: #1a1414;
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-size: 0.95em;
+      overflow-wrap: anywhere;
+    }
+    .unsupported ul { margin: 6px 0 0; padding-left: 18px; }
+    .unsupported li { margin-bottom: 3px; }
+  </style>
 </head>
 <body>
 
-  <h1>MNIST Handwritten Digit Classifier</h1>
-  <p>Draw a single digit (0-9) clearly in the center of the box</p>
+  <h1>MNIST Classifier &mdash; navigator.digitclassifier</h1>
+  <p class="tagline">Draw a single digit (0-9) clearly in the center of the box</p>
 
   <div class="app-container">
-    <!-- Visual Canvas for Smooth UI Interaction -->
+    <!-- Visible interactive canvas -->
     <canvas id="paintCanvas" width="280" height="280"></canvas>
 
-    <!-- Hidden 28x28 Workspace for LiteRT Processing -->
+    <!-- Hidden 28x28 workspace, where the tensor is actually built -->
     <canvas id="mnistCanvas" width="28" height="28" style="display: none;"></canvas>
 
-    <div class="backend" role="group" aria-label="Inference backend">
-      <button id="cpuBtn" type="button" aria-pressed="false">CPU (wasm)</button>
-      <button id="gpuBtn" type="button" aria-pressed="false">GPU (webgpu)</button>
-    </div>
+    <div id="unsupported" class="unsupported"></div>
 
-    <div id="backendInfo" class="backend-info"></div>
+    <div id="apiInfo" class="api-info"></div>
 
     <div class="controls">
       <button id="clearBtn">Clear</button>
@@ -260,8 +237,8 @@
   </div>
 
   <p class="alt">
-    <a href="./webgpu.html">Direct WebGPU version &rarr;</a> &nbsp;&middot;&nbsp;
-    <a href="./browser-model-api.html">navigator.digitclassifier version &rarr;</a>
+    <a href="./index.html">LiteRT.js version &rarr;</a> &nbsp;·&nbsp;
+    <a href="./webgpu.html">Direct WebGPU version &rarr;</a>
   </p>
 
   <script type="module">
@@ -269,6 +246,8 @@
        PART 1 - DRAWING
        Deliberately free of imports and top-level awaits: a failure anywhere
        in the model code below must never be able to take the canvas down.
+       Identical to index.html and webgpu.html, on purpose - the three pages
+       are only comparable if what the user draws is handled the same way.
        ===================================================================== */
 
     const paintCanvas = document.getElementById('paintCanvas');
@@ -339,200 +318,13 @@
     });
 
     /* =====================================================================
-       PART 2 - LITERT.JS MODEL
+       PART 2 - PREPROCESSING
+       Byte-for-byte the same normalization the other two pages use. Kept
+       inline rather than shared, matching how index.html and webgpu.html
+       already each carry their own copy.
        ===================================================================== */
 
-    // Served locally from node_modules, with the CDN as a fallback so the page
-    // also works from a bare checkout. Both are tried at runtime via dynamic
-    // import(), never a static one - a static import that fails to resolve
-    // aborts the whole module, listeners and all.
-    const LITERT_SOURCES = [
-      { lib: '@litertjs/core', wasm: './node_modules/@litertjs/core/wasm/' },
-      { lib: 'https://esm.run/@litertjs/core@2.5.3',
-        wasm: 'https://cdn.jsdelivr.net/npm/@litertjs/core@2.5.3/wasm/' }
-    ];
-    const MODEL_URL = './digit_classifier.tflite';
-
-    const cpuBtn = document.getElementById('cpuBtn');
-    const gpuBtn = document.getElementById('gpuBtn');
-    const predictBtn = document.getElementById('predictBtn');
-    const backendInfo = document.getElementById('backendInfo');
-
-    let litert;          // the module namespace
-    let model;           // CompiledModel for the active backend
-    let accelerator;     // 'wasm' | 'webgpu' - which backend `model` was compiled for
-    let inputShape;
-    let inputChannels;
-    let gpuReady = false;   // a GPUDevice has been handed to LiteRT.js
-    let coldMs;             // cost of the very first inference after a compile
-    let compileMs;          // cost of compiling the model for the active backend
-    let modelBytes;         // the .tflite, fetched once and reused for every compile
-    const timings = {};     // one-time costs, logged as a breakdown
-    let gpuAvailable = false;
-    let busy = false;
-
-    function setBusy(value) {
-      busy = value;
-      cpuBtn.disabled = value;
-      gpuBtn.disabled = value || !gpuAvailable;
-      predictBtn.disabled = value || !model;
-    }
-
-    function paintToggle() {
-      cpuBtn.setAttribute('aria-pressed', String(accelerator === 'wasm'));
-      gpuBtn.setAttribute('aria-pressed', String(accelerator === 'webgpu'));
-    }
-
-    // LiteRT.js will not accept the 'webgpu' accelerator until it has been given
-    // a real GPUDevice. Acquire one lazily, and only once - the device is reused
-    // across every later switch back to GPU.
-    async function ensureGpuDevice() {
-      if (gpuReady) return true;
-      if (!litert.isWebGPUSupported()) return false;
-      const adapter = await navigator.gpu.requestAdapter();
-      if (!adapter) return false;
-      litert.setWebGpuDevice(await adapter.requestDevice());
-      gpuReady = true;
-      return true;
-    }
-
-    // Compile for `target`, replacing whatever is currently loaded. Throws if the
-    // backend cannot compile the model; the caller decides how to recover.
-    async function compileFor(target) {
-      if (target === 'webgpu' && !(await ensureGpuDevice())) {
-        throw new Error('No WebGPU device is available.');
-      }
-
-      // Discard the previous CompiledModel before building the new one.
-      model?.delete();
-      model = undefined;
-
-      // Compile from the bytes fetched at startup rather than from the URL.
-      // loadAndCompile accepts either, but handing it a Uint8Array keeps the
-      // download out of the measurement - and stops every backend switch from
-      // re-fetching the same 1.2 MB.
-      const compileStarted = performance.now();
-      model = await litert.loadAndCompile(modelBytes, { accelerator: target });
-      compileMs = performance.now() - compileStarted;
-      accelerator = target;
-
-      // Read the real tensor layout off the model instead of hard-coding it.
-      // This model declares [1, 28, 28, 3], i.e. 2352 RGB floats - not the 784
-      // grayscale values MNIST examples usually assume.
-      inputShape = Array.from(model.getInputDetails()[0].shape);
-      inputChannels = inputShape.reduce((a, b) => a * b, 1) / (28 * 28);
-
-      // The first inference after a compile pays one-time costs the later ones do
-      // not (shader compilation, buffer allocation, kernel selection). Time it on
-      // its own and report it separately, so those costs are visible instead of
-      // being smeared into the steady-state average.
-      const coldStarted = performance.now();
-      await runOnce(new Float32Array(28 * 28 * inputChannels));
-      coldMs = performance.now() - coldStarted;
-      paintBackendInfo();
-
-      paintToggle();
-    }
-
-    async function switchTo(target) {
-      if (busy || target === accelerator) return;
-
-      const previous = accelerator;
-      setBusy(true);
-      resultDiv.innerText = `Switching to ${label(target)}...`;
-      // The old backend's figures do not describe the new one.
-      backendInfo.innerHTML = '<span class="timing">compiling...</span>';
-
-      try {
-        await compileFor(target);
-        resultDiv.innerText = `Ready on ${label(target)}.`;
-      } catch (err) {
-        console.error(`Could not switch to ${target}.`, err);
-        // Never leave the page with no usable model: go back to what worked.
-        try {
-          await compileFor(previous);
-          resultDiv.innerText = `${label(target)} unavailable - staying on ${label(previous)}.`;
-        } catch (fallbackErr) {
-          console.error(fallbackErr);
-          model = undefined;
-          resultDiv.innerText = 'Model unavailable. Check the console.';
-        }
-      } finally {
-        paintToggle();
-        setBusy(false);
-      }
-    }
-
-    function label(target) {
-      return target === 'webgpu' ? 'GPU (webgpu)' : 'CPU (wasm)';
-    }
-
-    cpuBtn.addEventListener('click', () => switchTo('wasm'));
-    gpuBtn.addEventListener('click', () => switchTo('webgpu'));
-
-    async function initModel() {
-      resultDiv.innerText = 'Loading LiteRT Model...';
-      setBusy(true);
-
-      let lastErr;
-      for (const source of LITERT_SOURCES) {
-        try {
-          const runtimeStarted = performance.now();
-          litert = await import(/* @vite-ignore */ source.lib);
-          await litert.loadLiteRt(source.wasm);
-          // Runtime init is dominated by fetching a ~9 MB .wasm, so this figure
-          // is mostly network and is reported apart from the compile cost.
-          timings.runtimeInitMs = performance.now() - runtimeStarted;
-          break;
-        } catch (err) {
-          lastErr = err;
-          litert = undefined;
-        }
-      }
-      if (!litert) throw lastErr;
-
-      // Fetch the model once, up front, so that compiling it later measures
-      // compilation alone. This is the network cost being excluded.
-      const fetchStarted = performance.now();
-      const response = await fetch(MODEL_URL);
-      if (!response.ok) throw new Error(`Could not fetch ${MODEL_URL}: ${response.status}`);
-      modelBytes = new Uint8Array(await response.arrayBuffer());
-      timings.modelFetchMs = performance.now() - fetchStarted;
-      timings.modelBytes = modelBytes.byteLength;
-
-      // Probe the GPU once up front so an unavailable backend shows as a
-      // disabled button with a reason, rather than a button that fails on click.
-      gpuAvailable = await ensureGpuDevice().catch(() => false);
-      if (!gpuAvailable) {
-        gpuBtn.title = litert.isWebGPUSupported()
-          ? 'No WebGPU adapter available in this browser.'
-          : 'This browser does not support WebGPU.';
-      }
-
-      // Prefer the GPU when it is there, otherwise the XNNPack/WASM CPU backend.
-      // A GPU that reports a device can still fail to compile this model, so
-      // fall back to the CPU rather than leaving the page with nothing.
-      if (gpuAvailable) {
-        try {
-          await compileFor('webgpu');
-        } catch (err) {
-          console.warn('WebGPU compile failed, falling back to the CPU backend.', err);
-          gpuAvailable = false;
-          gpuBtn.title = 'This model could not be compiled for WebGPU.';
-        }
-      }
-      if (!model) await compileFor('wasm');
-
-      timings.compileMs = compileMs;
-      timings.firstInferenceMs = coldMs;
-      timings.accelerator = accelerator;
-      console.log('LiteRT startup breakdown (ms):', timings);
-
-      resultDiv.innerText = `Ready on ${label(accelerator)}.`;
-      setBusy(false);
-    }
-
-    // Downsample the 280x280 drawing to the 28x28 grayscale matrix MNIST expects,
+    // Downsample the 280x280 drawing to the 28x28 matrix MNIST expects,
     // normalizing it the way MNIST itself was built: each digit is size-fit into
     // a 20x20 box and then centred in the 28x28 frame by centre of mass - not by
     // bounding box, and not by a naive full-canvas downscale. A stroke sitting
@@ -543,9 +335,7 @@
       const hiddenCtx = hiddenCanvas.getContext('2d', { willReadFrequently: true });
 
       // --- ink check, must run before any bounding-box work: an empty canvas
-      // has no bounding box. This reuses the original naive downscale purely to
-      // decide whether anything was drawn at all; the real tensor is built below
-      // from the centred version once we know there is ink to centre.
+      // has no bounding box.
       //
       // Paint an opaque black background first. The strokes are anti-aliased, so
       // their edge pixels are partially transparent white; reading them straight
@@ -604,8 +394,7 @@
       cropCanvas.width = scaledW;
       cropCanvas.height = scaledH;
       const cropCtx = cropCanvas.getContext('2d', { willReadFrequently: true });
-      // Same black-fill-before-drawImage reasoning as above: the crop is
-      // composited over black so anti-aliased edges read back correctly.
+      // Same black-fill-before-drawImage reasoning as above.
       cropCtx.fillStyle = 'black';
       cropCtx.fillRect(0, 0, scaledW, scaledH);
       cropCtx.drawImage(paintCanvas, minX, minY, boxW, boxH, 0, 0, scaledW, scaledH);
@@ -647,13 +436,33 @@
       return { inputBuffer, ink };
     }
 
-    // performance.now() is clamped to coarse steps (1 ms in a page that is not
-    // cross-origin isolated), and one inference on this small model finishes
-    // well inside that. A single run therefore cannot be timed directly - it
-    // reads as exactly 0 - so the runs after the first are repeated until the
-    // total is measurable and reported as a mean.
-    const TIMING_MIN_MS = 5;
-    const TIMING_MAX_RUNS = 50;
+    /* =====================================================================
+       PART 3 - THE API UNDER TEST
+       navigator.digitclassifier. The whole model - architecture, weights, the
+       WGSL that runs it - lives inside the browser, so there is nothing to
+       fetch and no backend to choose. Contrast index.html, which downloads a
+       ~9 MB wasm runtime and a 1.2 MB .tflite, and webgpu.html, which parses
+       that .tflite itself and compiles its own shaders.
+       ===================================================================== */
+
+    // Fixed by the IDL: classify() takes exactly 28*28*3 floats in [0,1],
+    // NHWC, and rejects anything else with a TypeError.
+    const INPUT_CHANNELS = 3;
+    const INPUT_LENGTH = 28 * 28 * INPUT_CHANNELS;
+
+    const predictBtn = document.getElementById('predictBtn');
+    const apiInfo = document.getElementById('apiInfo');
+    const unsupported = document.getElementById('unsupported');
+
+    let model;          // DigitClassifierModel, acquired once
+    let getModelMs;     // cost of acquiring it - GPU adapter, device, pipeline
+    let coldMs;         // cost of the first classify() after that
+    let busy = false;
+
+    function setBusy(value) {
+      busy = value;
+      predictBtn.disabled = value || !model;
+    }
 
     // Renders a duration, admitting when it fell below the clock's resolution
     // rather than printing a confident "0.00 ms".
@@ -661,59 +470,108 @@
       return value > 0 ? `${value.toFixed(2)} ms` : '<1 ms';
     }
 
-    // "cold start" rather than "first inference": the result line reports the
-    // first run of a classification, and two different metrics both called
-    // "first" in the same place is what made this number look like it changed.
-    function paintBackendInfo() {
-      backendInfo.innerHTML =
-        `<span class="timing">compile ${ms(compileMs)}</span>` +
-        `<span class="timing">cold start ${ms(coldMs)}</span>`;
+    function paintApiInfo() {
+      apiInfo.innerHTML =
+        `<span class="timing">getModel() ${ms(getModelMs)}</span>` +
+        (coldMs === undefined ? '' : `<span class="timing">cold start ${ms(coldMs)}</span>`);
     }
 
-    // One inference: upload the tensor, run it, read the output back.
-    async function runOnce(inputBuffer) {
-      let inputTensor, outputs;
-      try {
-        inputTensor = new litert.Tensor(inputBuffer, inputShape);
-        // Positional call - avoids depending on the model's input tensor names.
-        outputs = await model.run(inputTensor);
-        return Array.from(await outputs[0].data());
-      } finally {
-        // LiteRT.js uses manual memory management.
-        inputTensor?.delete();
-        outputs?.forEach(t => t.delete());
+    // Say which of the three requirements is missing, rather than a flat
+    // "not supported" - each one has a different fix.
+    function explainUnsupported() {
+      const reasons = [];
+      if (!window.isSecureContext) {
+        reasons.push('This page is not a <strong>secure context</strong>. ' +
+          'All three interfaces are <code>[SecureContext]</code>, so the API is ' +
+          'not exposed over plain <code>http://</code> to a remote host, or from ' +
+          '<code>file://</code>. Serve it over <code>https://</code>, or from ' +
+          '<code>localhost</code> / <code>127.0.0.1</code>.');
       }
+      if (!('digitclassifier' in navigator)) {
+        reasons.push('<code>navigator.digitclassifier</code> is missing. It ships only in a ' +
+          'Chromium build carrying the <code>DigitClassifier</code> module, and it is ' +
+          '<code>status: "test"</code> in <code>runtime_enabled_features.json5</code>, so it ' +
+          'stays off unless the browser is started with ' +
+          '<code>--enable-blink-features=DigitClassifier</code>.');
+      }
+      if (!navigator.gpu) {
+        reasons.push('<code>navigator.gpu</code> is absent, so there is no WebGPU for the ' +
+          'model to run on. The implementation has no CPU path.');
+      }
+      unsupported.innerHTML =
+        '<strong>navigator.digitclassifier is not available here.</strong><ul>' +
+        reasons.map(r => `<li>${r}</li>`).join('') + '</ul>';
+      unsupported.classList.add('shown');
     }
+
+    // performance.now() is clamped to coarse steps (1 ms in a page that is not
+    // cross-origin isolated), and one inference on this small model finishes
+    // well inside that. A single run therefore cannot be timed directly - it
+    // reads as exactly 0 - so the runs after the first are repeated until the
+    // total is measurable and reported as a mean. Same harness as the other two
+    // pages, so the figures can be put side by side.
+    const TIMING_MIN_MS = 5;
+    const TIMING_MAX_RUNS = 50;
 
     // Times the runs after the first. The first run of a classification still
-    // carries a small penalty the later ones do not (caches, allocations that do
-    // not survive between clicks), and folding that into a small sample skews the
-    // figure, so it runs as an untimed warm-up and is left out of the mean. The
-    // genuinely cold first inference is measured once per compile instead, and
-    // reported separately as "cold start".
-    async function infer(inputBuffer) {
-      let values = await runOnce(inputBuffer);
+    // carries a small penalty the later ones do not, so it runs as an untimed
+    // warm-up and is left out of the mean.
+    async function timedClassify(inputBuffer) {
+      let digit = await model.classify(inputBuffer);
 
       const started = performance.now();
       let runs = 0;
       let elapsed = 0;
 
       do {
-        values = await runOnce(inputBuffer);
+        digit = await model.classify(inputBuffer);
         runs++;
         elapsed = performance.now() - started;
       } while (elapsed < TIMING_MIN_MS && runs < TIMING_MAX_RUNS - 1);
 
-      return { values, mean: elapsed / runs, runs };
+      return { digit, mean: elapsed / runs, runs };
     }
 
-    function toProbabilities(values) {
-      const sum = values.reduce((a, b) => a + b, 0);
-      if (Math.abs(sum - 1) < 0.01) return values; // Model already applies softmax
-      const max = Math.max(...values);
-      const exps = values.map(v => Math.exp(v - max));
-      const expSum = exps.reduce((a, b) => a + b, 0);
-      return exps.map(v => v / expSum);
+    async function initModel() {
+      if (!window.isSecureContext || !('digitclassifier' in navigator) || !navigator.gpu) {
+        explainUnsupported();
+        apiInfo.textContent = '';
+        resultDiv.innerText = 'API unavailable - drawing still works.';
+        predictBtn.disabled = true;
+        return;
+      }
+
+      resultDiv.innerText = 'Acquiring the model...';
+      setBusy(true);
+
+      // getModel() waits for exactly two round-trips - RequestAdapter and
+      // RequestDevice. It also *orders* the weight uploads, the shader module
+      // and the compute pipeline, but those are Dawn wire calls that hand back
+      // a client-side handle immediately; nothing here waits for the GPU
+      // process to acknowledge them, and the wire is not even flushed. So this
+      // figure is the device handshake, not the pipeline build - see the cold
+      // start below, which is where the build is actually paid for.
+      const started = performance.now();
+      model = await navigator.digitclassifier.getModel();
+      getModelMs = performance.now() - started;
+      paintApiInfo();
+
+      // The first classify() is the first call to flush the wire and submit,
+      // so it collects everything getModel() ordered but did not wait for:
+      // shader compilation, pipeline creation, buffer allocation. That is why
+      // it costs ~40x a steady-state run. Paying it here keeps it off the
+      // user's first click. The two figures never overlap - this one is
+      // measured after getModel() has already resolved - so they add up to the
+      // true time-to-first-answer.
+      const coldStarted = performance.now();
+      await model.classify(new Float32Array(INPUT_LENGTH));
+      coldMs = performance.now() - coldStarted;
+      paintApiInfo();
+
+      console.log('digitclassifier startup (ms):', { getModelMs, coldMs });
+
+      resultDiv.innerText = 'Ready.';
+      setBusy(false);
     }
 
     predictBtn.addEventListener('click', async () => {
@@ -722,32 +580,34 @@
         return;
       }
 
-      const { inputBuffer, ink } = preprocessCanvas(inputChannels);
+      const { inputBuffer, ink } = preprocessCanvas(INPUT_CHANNELS);
       if (ink < 1) {
         resultDiv.innerText = 'Draw a digit first.';
         return;
       }
 
-      const ranOn = accelerator;
       setBusy(true);
       resultDiv.innerText = 'Classifying...';
 
       try {
-        const { values, mean, runs } = await infer(inputBuffer);
-        const probabilities = toProbabilities(values);
+        const { digit, mean, runs } = await timedClassify(inputBuffer);
 
-        const predictedDigit = probabilities.indexOf(Math.max(...probabilities));
-        const confidence = probabilities[predictedDigit];
-
-        resultDiv.innerHTML = `Predicted: <strong>${predictedDigit}</strong> ` +
+        // classify() resolves with the winning digit as a string and nothing
+        // else. There is no confidence to report: the shader picks the largest
+        // logit on the GPU and returns only its index, so the probabilities the
+        // other two pages print are never sent back to JavaScript.
+        resultDiv.innerHTML = `Predicted: <strong>${digit}</strong> ` +
           `<span class="confidence">` +
-            `<span class="timing">(${(confidence * 100).toFixed(1)}% match)</span>` +
-            `<span class="timing">${ms(mean)} on ${ranOn}` +
+            `<span class="timing">${ms(mean)} per classify()` +
             `${runs > 1 ? ` (mean of ${runs})` : ''}</span>` +
+            `<span class="timing">no confidence - the API returns the digit only</span>` +
           `</span>`;
       } catch (err) {
         console.error(err);
-        resultDiv.innerText = 'Inference failed. Check the console.';
+        // Worth showing verbatim: a detached buffer, a wrong input length and a
+        // lost GPU context all surface here with distinct messages.
+        resultDiv.innerHTML = `Inference failed. ` +
+          `<span class="confidence">${err.name}: ${err.message}</span>`;
       } finally {
         setBusy(false);
       }
@@ -756,7 +616,9 @@
     // Kick off model loading, but never let it break the drawing UI.
     initModel().catch(err => {
       console.error(err);
-      resultDiv.innerText = 'Model failed to load - drawing still works. Check the console.';
+      resultDiv.innerHTML = 'getModel() failed - drawing still works. ' +
+        `<span class="confidence">${err.name}: ${err.message}</span>`;
+      predictBtn.disabled = true;
     });
   </script>
 </body>
