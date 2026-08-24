@@ -1,0 +1,331 @@
+{
+  "date": "2026-08-24",
+  "device": {
+    "model": "CPH2653",
+    "name": "OnePlus 13",
+    "gpu": "Adreno 830",
+    "os": "Android 16 / API 36"
+  },
+  "browser": {
+    "package": "com.android.chrome",
+    "name": "stock Chrome",
+    "version": "150.0.7871.188"
+  },
+  "content": {
+    "origin": "https://obeletski.github.io/webgpu-experiments/",
+    "protocol": "https"
+  },
+  "method": {
+    "heap": "CDP Performance.getMetrics JSHeapUsedSize after HeapProfiler.collectGarbage",
+    "note_performance_memory": "performance.memory returned a quantised 10000000 on every config and was not used",
+    "sizes": "PerformanceResourceTiming decodedBodySize; transferSize unreliable here because most resources were cache hits",
+    "wire_sizes": "measured separately with curl against the live site and CDN, compressed as served",
+    "inferences_per_config": "5 activations x 100 internal runs plus warm-ups, about 505"
+  },
+  "configs": {
+    "litert-gpu": {
+      "url": "https://obeletski.github.io/webgpu-experiments/index.html",
+      "state": {
+        "ready": true,
+        "unsupported": false
+      },
+      "afterLoad": {
+        "used": 1695340,
+        "total": 2359296,
+        "nodes": 80,
+        "docs": 1
+      },
+      "perfMemory": {
+        "used": 10000000,
+        "total": 10000000,
+        "limit": 3760000000
+      },
+      "afterSwitch": {
+        "used": 1697632,
+        "total": 2359296,
+        "nodes": 80,
+        "docs": 1
+      },
+      "afterInferenceNoGC": {
+        "used": 2988408,
+        "total": 5767168,
+        "nodes": 140,
+        "docs": 1
+      },
+      "afterInferenceGC": {
+        "used": 1925120,
+        "total": 2621440,
+        "nodes": 88,
+        "docs": 1
+      },
+      "result": "Predicted: 1 (100.0% match) 1.64 ms on webgpu (mean of 100)",
+      "resources": [
+        {
+          "name": "/webgpu-experiments/node_modules/@litertjs/core/dist/index.js",
+          "type": "script",
+          "transfer": 300,
+          "encoded": 0,
+          "decoded": 0
+        },
+        {
+          "name": "/favicon.ico",
+          "type": "other",
+          "transfer": 5442,
+          "encoded": 5142,
+          "decoded": 9115
+        },
+        {
+          "name": "/@litertjs/core@2.5.3",
+          "type": "script",
+          "transfer": 0,
+          "encoded": 8687,
+          "decoded": 26744
+        },
+        {
+          "name": "/npm/@litertjs/wasm-utils@2.5.3/+esm",
+          "type": "script",
+          "transfer": 0,
+          "encoded": 602,
+          "decoded": 1125
+        },
+        {
+          "name": "/npm/@litertjs/core@2.5.3/wasm/litert_wasm_internal.js",
+          "type": "script",
+          "transfer": 0,
+          "encoded": 67707,
+          "decoded": 273035
+        },
+        {
+          "name": "/npm/@litertjs/core@2.5.3/wasm/litert_wasm_internal.wasm",
+          "type": "fetch",
+          "transfer": 0,
+          "encoded": 2612382,
+          "decoded": 9367934
+        },
+        {
+          "name": "/webgpu-experiments/digit_classifier.tflite",
+          "type": "fetch",
+          "transfer": 300,
+          "encoded": 1126982,
+          "decoded": 1212797
+        }
+      ],
+      "navigation": {
+        "transfer": 300,
+        "encoded": 9896,
+        "decoded": 29491
+      }
+    },
+    "litert-cpu": {
+      "url": "https://obeletski.github.io/webgpu-experiments/index.html",
+      "state": {
+        "ready": true,
+        "unsupported": false
+      },
+      "afterLoad": {
+        "used": 1692912,
+        "total": 2359296,
+        "nodes": 80,
+        "docs": 1
+      },
+      "perfMemory": {
+        "used": 10000000,
+        "total": 10000000,
+        "limit": 3760000000
+      },
+      "afterSwitch": {
+        "used": 1709300,
+        "total": 2359296,
+        "nodes": 80,
+        "docs": 1
+      },
+      "afterInferenceNoGC": {
+        "used": 2431868,
+        "total": 5242880,
+        "nodes": 140,
+        "docs": 1
+      },
+      "afterInferenceGC": {
+        "used": 1863948,
+        "total": 2359296,
+        "nodes": 88,
+        "docs": 1
+      },
+      "result": "Predicted: 1 (100.0% match) 0.11 ms on wasm (mean of 100)",
+      "resources": [
+        {
+          "name": "/webgpu-experiments/node_modules/@litertjs/core/dist/index.js",
+          "type": "script",
+          "transfer": 300,
+          "encoded": 0,
+          "decoded": 0
+        },
+        {
+          "name": "/favicon.ico",
+          "type": "other",
+          "transfer": 5442,
+          "encoded": 5142,
+          "decoded": 9115
+        },
+        {
+          "name": "/@litertjs/core@2.5.3",
+          "type": "script",
+          "transfer": 0,
+          "encoded": 8687,
+          "decoded": 26744
+        },
+        {
+          "name": "/npm/@litertjs/wasm-utils@2.5.3/+esm",
+          "type": "script",
+          "transfer": 0,
+          "encoded": 602,
+          "decoded": 1125
+        },
+        {
+          "name": "/npm/@litertjs/core@2.5.3/wasm/litert_wasm_internal.js",
+          "type": "script",
+          "transfer": 0,
+          "encoded": 67707,
+          "decoded": 273035
+        },
+        {
+          "name": "/npm/@litertjs/core@2.5.3/wasm/litert_wasm_internal.wasm",
+          "type": "fetch",
+          "transfer": 0,
+          "encoded": 2612382,
+          "decoded": 9367934
+        },
+        {
+          "name": "/webgpu-experiments/digit_classifier.tflite",
+          "type": "fetch",
+          "transfer": 0,
+          "encoded": 1126982,
+          "decoded": 1212797
+        }
+      ],
+      "navigation": {
+        "transfer": 0,
+        "encoded": 9896,
+        "decoded": 29491
+      }
+    },
+    "direct-webgpu": {
+      "url": "https://obeletski.github.io/webgpu-experiments/webgpu.html",
+      "state": {
+        "ready": true,
+        "unsupported": false
+      },
+      "afterLoad": {
+        "used": 552112,
+        "total": 1572864,
+        "nodes": 74,
+        "docs": 1
+      },
+      "perfMemory": {
+        "used": 10000000,
+        "total": 10000000,
+        "limit": 3760000000
+      },
+      "afterInferenceNoGC": {
+        "used": 1273864,
+        "total": 3670016,
+        "nodes": 134,
+        "docs": 1
+      },
+      "afterInferenceGC": {
+        "used": 581924,
+        "total": 1572864,
+        "nodes": 82,
+        "docs": 1
+      },
+      "result": "Predicted: 1 (100.0% match) 3.11 ms on fused (mean of 100)",
+      "resources": [
+        {
+          "name": "/webgpu-experiments/digit_classifier.tflite",
+          "type": "fetch",
+          "transfer": 0,
+          "encoded": 1126982,
+          "decoded": 1212797
+        },
+        {
+          "name": "/favicon.ico",
+          "type": "other",
+          "transfer": 5442,
+          "encoded": 5142,
+          "decoded": 9115
+        }
+      ],
+      "navigation": {
+        "transfer": 300,
+        "encoded": 11034,
+        "decoded": 34531
+      }
+    },
+    "browser-api": {
+      "url": "https://obeletski.github.io/webgpu-experiments/browser-model-api.html",
+      "state": {
+        "ready": false,
+        "unsupported": true
+      },
+      "afterLoad": {
+        "used": 495484,
+        "total": 786432,
+        "nodes": 83,
+        "docs": 1
+      },
+      "perfMemory": {
+        "used": 10000000,
+        "total": 10000000,
+        "limit": 3760000000
+      },
+      "resources": [
+        {
+          "name": "/favicon.ico",
+          "type": "other",
+          "transfer": 5442,
+          "encoded": 5142,
+          "decoded": 9115
+        }
+      ],
+      "navigation": {
+        "transfer": 8889,
+        "encoded": 8589,
+        "decoded": 24810
+      }
+    }
+  },
+  "derived": {
+    "heap_steady_post_gc_bytes": {
+      "litert_gpu": 1925120,
+      "litert_cpu": 1863948,
+      "direct_webgpu": 581924,
+      "browser_api_load_only": 495484
+    },
+    "heap_after_load_bytes": {
+      "litert_gpu": 1695340,
+      "litert_cpu": 1692912,
+      "direct_webgpu": 552112,
+      "browser_api": 495484
+    },
+    "transient_bytes_per_inference": {
+      "litert_gpu": 2106,
+      "litert_cpu": 1125,
+      "direct_webgpu": 1370
+    },
+    "decoded_bytes_favicon_excluded": {
+      "litert": 10911126,
+      "direct_webgpu": 1247328,
+      "browser_api": 24810
+    },
+    "litert_wasm_decoded_bytes": 9367934,
+    "wire_bytes": {
+      "litert": 3826256,
+      "direct_webgpu": 1138016,
+      "browser_api": 8589
+    },
+    "gpu_resident_bytes_computed_from_source": {
+      "total": 1219936,
+      "weights": 1209896
+    }
+  }
+}

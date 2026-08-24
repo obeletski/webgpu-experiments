@@ -255,6 +255,46 @@ compressed as served.
 
 **445×** separates the largest from the smallest.
 
+### Memory — decoded, and what the runtime actually costs
+
+The wire figures understate the runtime path badly, because its bulk is
+compressed wasm. Measured on the device from `PerformanceResourceTiming`
+(favicon excluded):
+
+| Path | On the wire | **Decoded** | Expansion |
+| --- | ---: | ---: | ---: |
+| Runtime | 3,826,256 B | **10,911,126 B — 10.41 MiB** | 2.9× |
+| Hand-written | 1,138,016 B | **1,247,328 B — 1.19 MiB** | 1.1× |
+| Browser-native | 8,589 B | **24,810 B — 0.02 MiB** | 2.9× |
+
+**LiteRT's wasm alone decodes to 9,367,934 B — 8.93 MiB** from 2.6 MB on the
+wire. That is 8.9 MiB of runtime code held in memory to execute a 1.2 MB model:
+the runtime outweighs the thing it runs by **7.7×**.
+
+### Memory — JS heap on the device
+
+`Performance.getMetrics` over the DevTools socket, after a forced
+`HeapProfiler.collectGarbage`. (`performance.memory` is useless here — it
+returned a quantised 10,000,000 on all four configurations.)
+
+| Config | After load | Steady, post-GC | Transient per inference |
+| --- | ---: | ---: | ---: |
+| Runtime — GPU | 1,695,340 B | **1,925,120 B — 1.84 MiB** | 2,106 B |
+| Runtime — CPU | 1,692,912 B | **1,863,948 B — 1.78 MiB** | 1,125 B |
+| Hand-written | 552,112 B | **581,924 B — 0.55 MiB** | 1,370 B |
+| Browser-native | **495,484 B — 0.47 MiB** | —³ | —³ |
+
+³ Cannot classify on stock Chrome, so only its load-time heap is observable.
+
+Transient figures are garbage collected across ~505 inferences (5 activations ×
+100 runs, plus warm-ups). **The runtime's GPU path allocates the most per
+inference and is still the fastest** — 2,106 B against the hand-written page's
+1,370 B, while running 2.03× quicker. Allocation volume is not what is costing
+the hand-written page its time.
+
+Raw probe output:
+[`measurements/2026-08-24-stock-chrome-memory.json`](measurements/2026-08-24-stock-chrome-memory.json).
+
 ### Memory — GPU-resident
 
 Computed exactly from `webgpu.html`, which is the only path that declares its
@@ -282,9 +322,9 @@ quantising the model.
 | **T1** | Hand-written beats the runtime | **Wrong** — it is **2.03× slower** (3.270 vs 1.610 ms), on disjoint distributions | ❌ |
 | **T2** | GPU beats CPU | **Wrong** — the CPU is **17.9× faster** | ❌ |
 | **T3** | Browser-native is fastest | **Wrong**, on the evidence available² | ❌ |
-| **M1** | Browser-native smallest | **Right** — 8.4 KiB, 445× smaller than the runtime | ✅ |
-| **M2** | Hand-written in the middle | **Right** — 1.09 MiB | ✅ |
-| **M3** | Runtime largest | **Right** — 3.65 MiB | ✅ |
+| **M1** | Browser-native smallest | **Right** on all three metrics — 8.4 KiB wire, 0.02 MiB decoded, 0.47 MiB heap | ✅ |
+| **M2** | Hand-written in the middle | **Right** — 1.09 MiB wire, 1.19 MiB decoded, 0.55 MiB heap | ✅ |
+| **M3** | Runtime largest | **Right**, and by more than the wire suggests — 3.65 MiB wire but **10.41 MiB decoded** and 3.3× the heap | ✅ |
 | **M4** | ~1.2 MB of weights everywhere | **Right** — 1,209,896 B exactly | ✅ |
 
 ² Not measurable on stock Chrome, which has no `navigator.digitclassifier`. On
@@ -296,7 +336,8 @@ different browser, so it is evidence rather than proof.
 
 That split is the finding. Memory is **structural** — it follows directly from
 what each path must download and allocate, so reading the architecture predicts
-it exactly. Time is not, because all three predictions shared one assumption:
+it exactly, and it predicts it on three independent metrics: bytes on the wire,
+bytes decoded, and live JS heap all rank the three paths in the same order. Time is not, because all three predictions shared one assumption:
 that cost lives in the layers, so removing layers removes cost.
 
 Section 3 shows why that fails. Strip the runtime and you still issue
@@ -314,9 +355,14 @@ spends 1.61 ms mostly waiting.
 The two GPU paths' per-inference sequences differ in exactly two visible ways —
 LiteRT allocates a fresh `MAP_READ` buffer per call where the hand-written page
 reuses one, and it splits its readback into a separate submit. The hand-written
-choice looks more efficient and measures 2× slower. **Why is still unexplained**;
-the leading hypothesis is that reusing one buffer serialises each call behind the
-previous `unmap`, which is testable and untested.
+choice looks more efficient and measures 2× slower.
+
+The heap measurement confirms the allocation difference is real and rules out the
+obvious objection to the hypothesis: LiteRT's GPU path leaves **2,106 B** of
+garbage per inference against the hand-written page's **1,370 B**, so it really
+is allocating more — and winning anyway. **Why is still unexplained**; the leading
+hypothesis is that reusing one buffer serialises each call behind the previous
+`unmap`, which is testable and untested.
 
 Reading an architecture predicts what it must *carry*. It does not predict what
 it must *wait for*.
