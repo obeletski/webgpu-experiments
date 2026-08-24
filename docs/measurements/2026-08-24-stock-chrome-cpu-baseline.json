@@ -1,0 +1,705 @@
+{
+  "date": "2026-08-24",
+  "device": {
+    "model": "CPH2653",
+    "name": "OnePlus 13",
+    "soc": "Snapdragon 8 Elite",
+    "gpu": "Adreno 830",
+    "os": "Android 16 / API 36"
+  },
+  "browser": {
+    "package": "com.android.chrome",
+    "name": "stock Chrome",
+    "version": "150.0.7871.188"
+  },
+  "content": {
+    "url": "https://obeletski.github.io/webgpu-experiments/index.html",
+    "protocol": "https"
+  },
+  "protocol": {
+    "fixed_performance_mode": true,
+    "restored_after": true,
+    "chrome_force_stopped_between_sessions": true,
+    "sessions": 3,
+    "samples_per_session": 5,
+    "backend_order": [
+      "gpuBtn",
+      "cpuBtn"
+    ],
+    "warmup": "4 s burst (6 s for the 5000-run block)",
+    "readout": "chrome devtools protocol over adb forward tcp:9222"
+  },
+  "blocks": {
+    "100": [
+      {
+        "rep": 1,
+        "url": "https://obeletski.github.io/webgpu-experiments/index.html",
+        "phases": [
+          {
+            "backend": "gpuBtn",
+            "info": "compile 8.70 ms cold start 17.40 ms",
+            "warmup_classifications": 22,
+            "samples": [
+              {
+                "digit": 1,
+                "ms": 1.58,
+                "path": "webgpu",
+                "runs": 100
+              },
+              {
+                "digit": 1,
+                "ms": 1.72,
+                "path": "webgpu",
+                "runs": 100
+              },
+              {
+                "digit": 1,
+                "ms": 1.56,
+                "path": "webgpu",
+                "runs": 100
+              },
+              {
+                "digit": 1,
+                "ms": 1.38,
+                "path": "webgpu",
+                "runs": 100
+              },
+              {
+                "digit": 1,
+                "ms": 1.73,
+                "path": "webgpu",
+                "runs": 100
+              }
+            ]
+          },
+          {
+            "backend": "cpuBtn",
+            "info": "compile 12.20 ms cold start 3.90 ms",
+            "warmup_classifications": 161,
+            "samples": [
+              {
+                "digit": 1,
+                "ms": 0.14,
+                "path": "wasm",
+                "runs": 100
+              },
+              {
+                "digit": 1,
+                "ms": 0.14,
+                "path": "wasm",
+                "runs": 100
+              },
+              {
+                "digit": 1,
+                "ms": 0.14,
+                "path": "wasm",
+                "runs": 100
+              },
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 100
+              },
+              {
+                "digit": 1,
+                "ms": 0.15,
+                "path": "wasm",
+                "runs": 100
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "rep": 2,
+        "url": "https://obeletski.github.io/webgpu-experiments/index.html",
+        "phases": [
+          {
+            "backend": "gpuBtn",
+            "info": "compile 27.30 ms cold start 15.60 ms",
+            "warmup_classifications": 23,
+            "samples": [
+              {
+                "digit": 1,
+                "ms": 1.69,
+                "path": "webgpu",
+                "runs": 100
+              },
+              {
+                "digit": 1,
+                "ms": 1.45,
+                "path": "webgpu",
+                "runs": 100
+              },
+              {
+                "digit": 1,
+                "ms": 1.59,
+                "path": "webgpu",
+                "runs": 100
+              },
+              {
+                "digit": 1,
+                "ms": 1.68,
+                "path": "webgpu",
+                "runs": 100
+              },
+              {
+                "digit": 1,
+                "ms": 1.53,
+                "path": "webgpu",
+                "runs": 100
+              }
+            ]
+          },
+          {
+            "backend": "cpuBtn",
+            "info": "compile 10.40 ms cold start 2.40 ms",
+            "warmup_classifications": 162,
+            "samples": [
+              {
+                "digit": 1,
+                "ms": 0.15,
+                "path": "wasm",
+                "runs": 100
+              },
+              {
+                "digit": 1,
+                "ms": 0.1,
+                "path": "wasm",
+                "runs": 100
+              },
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 100
+              },
+              {
+                "digit": 1,
+                "ms": 0.11,
+                "path": "wasm",
+                "runs": 100
+              },
+              {
+                "digit": 1,
+                "ms": 0.13,
+                "path": "wasm",
+                "runs": 100
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "rep": 3,
+        "url": "https://obeletski.github.io/webgpu-experiments/index.html",
+        "phases": [
+          {
+            "backend": "gpuBtn",
+            "info": "compile 22.30 ms cold start 15.40 ms",
+            "warmup_classifications": 22,
+            "samples": [
+              {
+                "digit": 1,
+                "ms": 1.59,
+                "path": "webgpu",
+                "runs": 100
+              },
+              {
+                "digit": 1,
+                "ms": 1.66,
+                "path": "webgpu",
+                "runs": 100
+              },
+              {
+                "digit": 1,
+                "ms": 1.6,
+                "path": "webgpu",
+                "runs": 100
+              },
+              {
+                "digit": 1,
+                "ms": 1.7,
+                "path": "webgpu",
+                "runs": 100
+              },
+              {
+                "digit": 1,
+                "ms": 1.6,
+                "path": "webgpu",
+                "runs": 100
+              }
+            ]
+          },
+          {
+            "backend": "cpuBtn",
+            "info": "compile 28.30 ms cold start 6.80 ms",
+            "warmup_classifications": 161,
+            "samples": [
+              {
+                "digit": 1,
+                "ms": 0.2,
+                "path": "wasm",
+                "runs": 100
+              },
+              {
+                "digit": 1,
+                "ms": 0.18,
+                "path": "wasm",
+                "runs": 100
+              },
+              {
+                "digit": 1,
+                "ms": 0.14,
+                "path": "wasm",
+                "runs": 100
+              },
+              {
+                "digit": 1,
+                "ms": 0.12,
+                "path": "wasm",
+                "runs": 100
+              },
+              {
+                "digit": 1,
+                "ms": 0.24,
+                "path": "wasm",
+                "runs": 100
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "1000": [
+      {
+        "rep": 1,
+        "url": "https://obeletski.github.io/webgpu-experiments/index.html?timing_runs=1000",
+        "phases": [
+          {
+            "backend": "gpuBtn",
+            "info": "compile 7.90 ms cold start 14.90 ms",
+            "warmup_classifications": 3,
+            "samples": [
+              {
+                "digit": 1,
+                "ms": 1.65,
+                "path": "webgpu",
+                "runs": 1000
+              },
+              {
+                "digit": 1,
+                "ms": 1.64,
+                "path": "webgpu",
+                "runs": 1000
+              },
+              {
+                "digit": 1,
+                "ms": 1.65,
+                "path": "webgpu",
+                "runs": 1000
+              },
+              {
+                "digit": 1,
+                "ms": 1.59,
+                "path": "webgpu",
+                "runs": 1000
+              },
+              {
+                "digit": 1,
+                "ms": 1.61,
+                "path": "webgpu",
+                "runs": 1000
+              }
+            ]
+          },
+          {
+            "backend": "cpuBtn",
+            "info": "compile 17.40 ms cold start 3.80 ms",
+            "warmup_classifications": 45,
+            "samples": [
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 1000
+              },
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 1000
+              },
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 1000
+              },
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 1000
+              },
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 1000
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "rep": 2,
+        "url": "https://obeletski.github.io/webgpu-experiments/index.html?timing_runs=1000",
+        "phases": [
+          {
+            "backend": "gpuBtn",
+            "info": "compile 22.70 ms cold start 17.40 ms",
+            "warmup_classifications": 3,
+            "samples": [
+              {
+                "digit": 1,
+                "ms": 1.66,
+                "path": "webgpu",
+                "runs": 1000
+              },
+              {
+                "digit": 1,
+                "ms": 1.6,
+                "path": "webgpu",
+                "runs": 1000
+              },
+              {
+                "digit": 1,
+                "ms": 1.61,
+                "path": "webgpu",
+                "runs": 1000
+              },
+              {
+                "digit": 1,
+                "ms": 1.61,
+                "path": "webgpu",
+                "runs": 1000
+              },
+              {
+                "digit": 1,
+                "ms": 1.62,
+                "path": "webgpu",
+                "runs": 1000
+              }
+            ]
+          },
+          {
+            "backend": "cpuBtn",
+            "info": "compile 21.70 ms cold start 4.30 ms",
+            "warmup_classifications": 46,
+            "samples": [
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 1000
+              },
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 1000
+              },
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 1000
+              },
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 1000
+              },
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 1000
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "rep": 3,
+        "url": "https://obeletski.github.io/webgpu-experiments/index.html?timing_runs=1000",
+        "phases": [
+          {
+            "backend": "gpuBtn",
+            "info": "compile 12.10 ms cold start 16.30 ms",
+            "warmup_classifications": 3,
+            "samples": [
+              {
+                "digit": 1,
+                "ms": 1.65,
+                "path": "webgpu",
+                "runs": 1000
+              },
+              {
+                "digit": 1,
+                "ms": 1.54,
+                "path": "webgpu",
+                "runs": 1000
+              },
+              {
+                "digit": 1,
+                "ms": 1.57,
+                "path": "webgpu",
+                "runs": 1000
+              },
+              {
+                "digit": 1,
+                "ms": 1.58,
+                "path": "webgpu",
+                "runs": 1000
+              },
+              {
+                "digit": 1,
+                "ms": 1.59,
+                "path": "webgpu",
+                "runs": 1000
+              }
+            ]
+          },
+          {
+            "backend": "cpuBtn",
+            "info": "compile 12.70 ms cold start 3.80 ms",
+            "warmup_classifications": 45,
+            "samples": [
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 1000
+              },
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 1000
+              },
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 1000
+              },
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 1000
+              },
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 1000
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "5000": [
+      {
+        "rep": 1,
+        "url": "https://obeletski.github.io/webgpu-experiments/index.html?timing_runs=5000",
+        "phases": [
+          {
+            "backend": "cpuBtn",
+            "info": "compile 2.80 ms cold start 0.70 ms",
+            "warmup_classifications": 15,
+            "samples": [
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 5000
+              },
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 5000
+              },
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 5000
+              },
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 5000
+              },
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 5000
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "rep": 2,
+        "url": "https://obeletski.github.io/webgpu-experiments/index.html?timing_runs=5000",
+        "phases": [
+          {
+            "backend": "cpuBtn",
+            "info": "compile 4.60 ms cold start 0.80 ms",
+            "warmup_classifications": 15,
+            "samples": [
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 5000
+              },
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 5000
+              },
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 5000
+              },
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 5000
+              },
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 5000
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "rep": 3,
+        "url": "https://obeletski.github.io/webgpu-experiments/index.html?timing_runs=5000",
+        "phases": [
+          {
+            "backend": "cpuBtn",
+            "info": "compile 2.10 ms cold start 0.50 ms",
+            "warmup_classifications": 15,
+            "samples": [
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 5000
+              },
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 5000
+              },
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 5000
+              },
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 5000
+              },
+              {
+                "digit": 1,
+                "ms": 0.09,
+                "path": "wasm",
+                "runs": 5000
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "derived": {
+    "100_runs/gpuBtn": {
+      "n": 15,
+      "median_ms": 1.6,
+      "mean_ms": 1.604,
+      "sd_ms": 0.099,
+      "cv_pct": 6.17,
+      "min_ms": 1.38,
+      "max_ms": 1.73
+    },
+    "100_runs/cpuBtn": {
+      "n": 15,
+      "median_ms": 0.14,
+      "mean_ms": 0.1413,
+      "sd_ms": 0.0409,
+      "cv_pct": 28.91,
+      "min_ms": 0.09,
+      "max_ms": 0.24
+    },
+    "1000_runs/gpuBtn": {
+      "n": 15,
+      "median_ms": 1.61,
+      "mean_ms": 1.6113,
+      "sd_ms": 0.0344,
+      "cv_pct": 2.14,
+      "min_ms": 1.54,
+      "max_ms": 1.66
+    },
+    "1000_runs/cpuBtn": {
+      "n": 15,
+      "median_ms": 0.09,
+      "mean_ms": 0.09,
+      "sd_ms": 0.0,
+      "cv_pct": 0.0,
+      "min_ms": 0.09,
+      "max_ms": 0.09
+    },
+    "5000_runs/cpuBtn": {
+      "n": 15,
+      "median_ms": 0.09,
+      "mean_ms": 0.09,
+      "sd_ms": 0.0,
+      "cv_pct": 0.0,
+      "min_ms": 0.09,
+      "max_ms": 0.09
+    }
+  },
+  "conclusions": {
+    "cpu_settled_median_ms": 0.09,
+    "cpu_runs_to_settle": 1000,
+    "gpu_settled_median_ms": 1.61,
+    "gpu_runs_to_settle": 100,
+    "gpu_over_cpu": 17.9,
+    "cpu_bias_at_default_100_runs_pct": 55.6,
+    "note": "CPU median moves -36% from 100 to 1000 runs, then 0% to 5000; attributed to clock ramp, not quantisation"
+  }
+}

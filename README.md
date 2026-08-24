@@ -644,6 +644,44 @@ raw samples in
 These are the first figures in this repository taken with the fixed-count
 harness, so they may not be pooled with any number measured before 2026-08-24.
 
+### The CPU baseline, and how many runs a measurement needs
+
+The run above compared the two GPU paths to each other but anchored neither
+against the CPU. Measured in a following session block — same device, browser and
+protocol, GPU before CPU in each session as in the original protocol — and swept
+across `?timing_runs=` to find where each figure stops moving:
+
+| Backend | 100 runs | 1000 runs | 5000 runs | Settled | CV when settled |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| **CPU (`wasm`)** | 0.140 ms | **0.090 ms** | **0.090 ms** | **0.090 ms** | **0.0%** |
+| **GPU (`webgpu`)** | 1.600 ms | **1.610 ms** | — | **1.610 ms** | **2.1%** |
+
+**The GPU costs 17.9× the CPU** — a wider margin than the 7.7× reported above
+from the old harness, so better sampling strengthens the thesis rather than
+softening it.
+
+> [!IMPORTANT]
+> **The default of 100 runs is enough for the GPU but not for the CPU.** The GPU
+> median shifts +0.6% between 100 and 1000 runs — already on the plateau. The CPU
+> median shifts **−36%**, then holds at exactly 0.090 ms through 5000 runs. At the
+> default, **the CPU figure is 56% too high.**
+>
+> This is not clock quantisation. Quantisation is real and visible — at 100 runs
+> every CPU sample multiplied back to a whole millisecond of elapsed time, to
+> 0.0000 ms — but it bounds resolution at about ±3.5% and would not move a median
+> in one direction. The cause is **ramp**: 100 runs of a 0.09 ms inference is only
+> ~9 ms of work, too short a burst for the core to reach and hold its clock. The
+> GPU never shows it because 100 of its runs is already ~160 ms of continuous
+> work. Fixed-performance mode does not prevent this; it holds a sustainable
+> ceiling, not an instantaneous frequency.
+>
+> **Measure CPU paths with `?timing_runs=1000` or higher.**
+
+Full data:
+[`docs/measurements/2026-08-24-stock-chrome-cpu-baseline.md`](docs/measurements/2026-08-24-stock-chrome-cpu-baseline.md),
+raw samples in
+[`…-cpu-baseline.json`](docs/measurements/2026-08-24-stock-chrome-cpu-baseline.json).
+
 ### A debug browser can change the answer, not just the timing
 
 The same Chromium built with `is_debug = true` and `dcheck_always_on = true` was
@@ -931,7 +969,7 @@ cross-origin isolated — `serve.js` does not send the required
 | `screenshot.png` | The image at the top, captured on the Android device |
 | `docs/superpowers/specs/` | Design spec for the direct-WebGPU experiment |
 | `docs/superpowers/plans/` | Its implementation plan |
-| `docs/measurements/` | Raw measurement data behind the reported numbers, including the [three-way comparison](docs/measurements/2026-08-23-custom-chromium-three-way.md), the [stock-Chrome re-measurement](docs/measurements/2026-08-24-stock-chrome-litert-vs-webgpu.md) that reverses the 1.34×, and the [harness verification](docs/measurements/2026-08-24-fixed-count-harness-verification.md) |
+| `docs/measurements/` | Raw measurement data behind the reported numbers, including the [three-way comparison](docs/measurements/2026-08-23-custom-chromium-three-way.md), the [stock-Chrome re-measurement](docs/measurements/2026-08-24-stock-chrome-litert-vs-webgpu.md) that reverses the 1.34×, the [CPU baseline and run-count sweep](docs/measurements/2026-08-24-stock-chrome-cpu-baseline.md), and the [harness verification](docs/measurements/2026-08-24-fixed-count-harness-verification.md) |
 | `LICENSE` | Apache-2.0 |
 | `CLAUDE.md` | Guidance for Claude Code: the rules that keep the three pages comparable |
 | `.nojekyll` | Stops GitHub Pages running the site through Jekyll |

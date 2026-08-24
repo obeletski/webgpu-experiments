@@ -135,12 +135,23 @@ time budget so that **every backend is sampled alike**: under the old budget a
 reported spreads were never comparable quantities. Override with
 `?timing_runs=400` on any of the three pages.
 
-100 is a compromise between two errors pulling opposite ways. `performance.now()`
-is clamped to ~1 ms, so the error on the mean is `1 ms ÷ elapsed` — which argues
-for a high count, since the CPU path only reaches ~15 ms of elapsed time at 100.
-Sustained looping also warms clocks and eventually measures throughput rather than
-per-call latency, which argues for a low one. If a result needs defending, raise
-the count and check the median stops moving.
+**100 is not enough for the CPU.** Measured on the OnePlus, the CPU median moves
+0.140 → 0.090 ms between 100 and 1000 runs and then holds through 5000; the GPU
+moves 1.600 → 1.610 ms, i.e. it is already settled at 100. **At the default the
+CPU figure is 56% too high, so measure CPU paths with `?timing_runs=1000`.**
+
+The cause is clock ramp, not quantisation: 100 runs of a 0.09 ms inference is only
+~9 ms of work, too short a burst for the core to reach its clock, while 100 GPU
+runs is already ~160 ms. Fixed-performance mode does not prevent it — it holds a
+sustainable ceiling, not an instantaneous frequency. Quantisation is real but
+small: `performance.now()` is clamped to ~1 ms, which bounds resolution at
+`1 ms ÷ elapsed` and is unbiased.
+
+The default stays at 100 because 1000 makes a Classify click take ~1.6 s on the
+GPU path, which is a bad interactive page. **The stopping rule is what matters:
+raise the count until the median stops moving, then stop.** It resolves this case
+in three steps — see
+[the run-count sweep](docs/measurements/2026-08-24-stock-chrome-cpu-baseline.md).
 
 **Every published figure predates this harness** and was taken under the old time
 budget, most of them at 5 ms where the GPU CVs ran 45–55%. Numbers from the
