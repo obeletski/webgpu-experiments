@@ -579,9 +579,10 @@ fn main(@builtin(local_invocation_id) lid : vec3<u32>) {
   let t = lid.x;
 
   var acc = bias1[t];
-  let base = t * 2352u;
+  // w1 is stored transposed, [2352][128]: consecutive lanes read consecutive
+  // floats, so each step is one coalesced burst rather than 128 scattered reads.
   for (var i = 0u; i < 2352u; i = i + 1u) {
-    acc = acc + w1[base + i] * input[i];
+    acc = acc + w1[i * 128u + t] * input[i];
   }
   hidden[t] = max(acc, 0.0);
 
@@ -618,9 +619,10 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
   let o = gid.x;
   if (o >= 128u) { return; }
   var acc = bias1[o];
-  let base = o * 2352u;
+  // Same transposed w1 as the fused path - the variable under test between the
+  // two modes is dispatch count, so their memory layout has to match.
   for (var i = 0u; i < 2352u; i = i + 1u) {
-    acc = acc + w1[base + i] * input[i];
+    acc = acc + w1[i * 128u + o] * input[i];
   }
   hidden[o] = max(acc, 0.0);
 }`;
@@ -692,9 +694,25 @@ fn main() {
       };
       const empty = (bytes, usage) => device.createBuffer({ size: bytes, usage });
 
+      // W1 arrives from the .tflite as [128][2352] - output-major. That is the
+      // worst layout for the inner loop: at step i the 128 lanes read
+      // w1[t*2352 + i], addresses 9408 bytes apart, so every lane costs its own
+      // memory transaction and a 1.2 MB matrix is fetched a cache line at a time
+      // to use 4 bytes of each. Transposing to [2352][128] makes lane t read
+      // w1T[i*128 + t] - 128 consecutive floats, one coalesced burst per step.
+      // The arithmetic and its order are untouched, so results stay bit-identical;
+      // only the addressing changes. Done once at upload, off the timed path.
+      const transpose = (src, rows, cols) => {
+        const dst = new Float32Array(src.length);
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) dst[c * rows + r] = src[r * cols + c];
+        }
+        return dst;
+      };
+
       const buf = {
         input:  empty(2352 * 4, S | GPUBufferUsage.COPY_DST),
-        w1:     mk(weights.W1, S),
+        w1:     mk(transpose(weights.W1, 128, 2352), S),
         b1:     mk(weights.b1, S),
         w2:     mk(weights.W2, S),
         b2:     mk(weights.b2, S),

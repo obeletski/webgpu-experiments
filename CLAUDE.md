@@ -124,9 +124,51 @@ adb shell cmd power set-fixed-performance-mode-enabled true   # unrooted: no gov
 adb shell cmd power set-fixed-performance-mode-enabled false  # always restore
 ```
 
-Force-stop the browser between pages. Drive the UI with `input swipe` and
-`input tap` so every page classifies an identical drawn digit, and read results
-from `screencap` — page `console.log()` does not reach logcat.
+Force-stop the browser between pages.
+
+**Drive and read the pages over the DevTools protocol, not `screencap`.** Page
+`console.log()` does not reach logcat, which is why the original protocol used
+`input swipe` / `input tap` and OCR. Attaching to Chrome is both exact and
+guarantees an identical stroke across pages rather than aiming at screen
+coordinates:
+
+```sh
+adb forward tcp:9222 localabstract:chrome_devtools_remote
+curl http://localhost:9222/json          # find the page target
+# then Runtime.evaluate over its webSocketDebuggerUrl
+```
+
+This is a **readout** change only — the harness runs inside the page either way,
+and nothing in the timed region involves the driver. Record the deviation in the
+measurement file.
+
+**Measure uncommitted code without pushing.** Pages only serves what is on
+`main`, but the phone can reach a local server, and `http://localhost` is a
+secure context there, so WebGPU still initialises:
+
+```sh
+node serve.js
+adb reverse tcp:8080 tcp:8080            # phone loads http://localhost:8080/...
+```
+
+Use this for any A/B of a change that is not published yet. Serve both variants
+side by side so the only difference is the code.
+
+### Traps in the driver
+
+- **Do not wait for the result text to change.** Two consecutive runs can produce
+  a byte-identical line — same digit, same confidence, same rounded ms — and a
+  wait-for-difference then hangs forever. Clear the element and wait for it to be
+  refilled.
+- **Overwrite any injected helper**, do not `window.__h = window.__h || {…}`. The
+  page is not reloaded between driver runs, so a stale helper survives and silently
+  runs the old code.
+- **`performance.memory` is useless here** — it returned a quantised 10,000,000 on
+  every configuration. Use CDP `Performance.getMetrics` → `JSHeapUsedSize`, after
+  `HeapProfiler.collectGarbage`.
+- **On-device `transferSize` is unreliable** — most resources come back as cache
+  hits reporting 0 even after a force-stop. Take wire sizes from `curl` against
+  the live site; only `decodedBodySize` is trustworthy from the device.
 
 **One measurement is 100 inferences.** The harness runs a fixed `TIMING_RUNS`
 (default 100) and reports the mean. The count is fixed rather than derived from a
