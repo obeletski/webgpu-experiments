@@ -114,6 +114,80 @@ merely run slower — it changed the *classification*, predicting `4` where rele
 predicts `1`, and it distorts timings unevenly enough to invert the ordering
 between GPU paths. See the third experiment in the README.
 
+**Enabling `--enable-blink-features=DigitClassifier` on this non-rooted phone.**
+The 2026-08-24 attempt failed and blamed SELinux; that diagnosis was wrong. Chrome
+never *tried* to read `/data/local/tmp/chrome-command-line`. Per
+`base/android/java/src/org/chromium/base/CommandLineInitUtil.java`, the writable
+`/data/local/tmp` copy is consulted only when one of these holds:
+
+1. `Settings.Global.DEBUG_APP` equals the package **and** adb is enabled, or
+2. Android itself is an `eng`/`userdebug` build (this phone is `user`), or
+3. the `CommandLineOnNonRooted` feature is on.
+
+Otherwise it silently falls back to `/data/local/chrome-command-line`, which only
+root can write — so the flags file sits there being ignored, no denial logged.
+None of this depends on the APK being debuggable.
+
+The fix is one adb command, then the usual launch:
+
+```sh
+adb shell am set-debug-app --persistent org.chromium.chrome
+# if that errors on a non-debuggable APK, write the same setting directly:
+adb shell settings put global debug_app org.chromium.chrome
+
+adb shell 'echo "chrome --enable-blink-features=DigitClassifier" > /data/local/tmp/chrome-command-line'
+adb shell chmod 644 /data/local/tmp/chrome-command-line
+adb shell am force-stop org.chromium.chrome     # or the file is not re-read
+
+node serve.js &                                 # as in "Measure uncommitted code"
+adb reverse tcp:8080 tcp:8080
+adb shell am start -a android.intent.action.VIEW \
+    -d "http://localhost:8080/browser-model-api.html" \
+    -n org.chromium.chrome/com.google.android.apps.chrome.Main
+```
+
+Check the three preconditions rather than guessing, and confirm the flags landed
+on `chrome://version` (the *Command Line* row) — that is definitive, unlike the
+launch warning about user builds, which appears either way:
+
+```sh
+adb shell settings get global debug_app     # -> org.chromium.chrome
+adb shell settings get global adb_enabled   # -> 1
+adb shell 'ls -l /data/local/tmp/chrome-command-line; cat /data/local/tmp/chrome-command-line'
+```
+
+The first token in that file is a dummy argv[0] and is discarded — drop the
+leading `chrome` and the real flag is eaten instead.
+
+**Two alternatives, if `debug_app` keeps getting cleared** (a reboot or another
+tool calling `set-debug-app` will do it):
+
+- Turn on **"Enable command line on non-rooted devices"** at
+  `chrome://flags#enable-command-line-on-non-rooted-devices`. That is condition 3
+  above, it persists in the profile, and it needs no adb. It is a *cached* flag,
+  read at startup from the previous run's cache, so restart twice before
+  concluding it did not work.
+- Durably, in `~/chromium/src`: change `DigitClassifier` in
+  `runtime_enabled_features.json5` from `status: "test"` to
+  `status: "experimental"`, rebuild and reinstall. The feature then rides
+  `chrome://flags#enable-experimental-web-platform-features` and no command line
+  is ever needed. `status: "test"` means ContentShell-only, which is why the
+  existing "Experimental Web Platform features" toggle does nothing for it today.
+  Costs a rebuild and a 715 MB reinstall.
+
+*Derived from the Chromium sources named above on 2026-08-24; not re-run on the
+phone, which was off the tunnel that day. The first `settings get` will say
+immediately whether it holds.*
+
+**CDP does work on the custom build**, though — it opens the default
+`chrome_devtools_remote` socket like stock Chrome, *once past the first-run
+screen* (dismiss the "Make Chrome your own" page via a `Stay signed out` tap;
+first-run does not reappear after a force-stop). So the other three pages
+(`index.html` CPU/GPU, `webgpu.html`) can be driven over CDP from Pages exactly as
+on stock, and `browser-model-api.html` can too once the flag above is applied —
+the flag is set before launch and CDP attaches to the running browser afterwards,
+so the two do not interfere.
+
 ## Measuring
 
 Protocol, from the README's "Getting numbers that reproduce":

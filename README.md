@@ -625,7 +625,10 @@ Moving the implementation from *runtime + JavaScript* to *hand-written JavaScrip
 and WGSL* to *entirely C++ inside the browser* leaves every GPU path within
 1.4–2.7 ms while the CPU sits at 0.15 ms. Within a single build, the browser-native
 implementation (2.70 ms) and the hand-written page (2.50 ms) land on the same
-number.
+number. *(That clustering did not survive the fence-poll fix — re-measured with
+the fixed-count harness the two diverge to 3.73 ms and 0.52 ms; see the [fence-poll
+re-measure](#re-measured-with-the-fence-poll-the-c-api-is-now-the-slowest-gpu-path)
+below.)*
 
 That is the second experiment's residual, arrived at from a direction that shares
 none of its machinery. Whatever the ~3 ms is — command submission, queue latency,
@@ -678,6 +681,39 @@ row at CV 49.1% — the identical under-sampling defect this re-run exposed. It
 needs re-measuring at a 50 ms budget on stock Chrome before it can be trusted, and
 only then will it be clear whether the inversion is a browser difference or was
 never there.
+
+### Re-measured with the fence-poll: the C++ API is now the slowest GPU path
+
+Everything above measured this build *before* `webgpu.html` learned to
+[poll the fence](#traced-why-litertjs-is-faster). Re-run on the same custom
+Chromium 153, content from Pages, fixed clocks, the **fixed-count harness**
+(`timing_runs=1000`, 3 rounds × 5), all four paths together:
+
+| Implementation | Page | Median | CV | vs CPU |
+| --- | --- | ---: | ---: | ---: |
+| LiteRT.js — CPU (`wasm`) | `index.html` | **0.060 ms** | 29.5% | 1.0× |
+| Direct WebGPU — fused (fence-poll) | `webgpu.html` | **0.520 ms** | 32.7% | 8.7× |
+| LiteRT.js — GPU (`webgpu`) | `index.html` | **1.430 ms** | 3.0% | 24× |
+| `navigator.digitclassifier` | `browser-model-api.html` | **3.730 ms** | 1.7% | 62× |
+
+**The ordering of the GPU paths has inverted.** The browser-native C++ path — no
+JavaScript, weights linked into the binary, the leanest stack in this whole
+document — is now the **slowest** GPU path, and the hand-written JavaScript page is
+the fastest. Its 3.73 ms at **CV 1.7%** is the signature of a path pinned to the
+lazy-fence floor: it runs its readback the ordinary way, nothing pokes Chrome's
+completion fence, so it pays the full wait every single time. `webgpu.html` reaches
+0.52 ms *only* because its `run()` polls `onSubmittedWorkDone` from every task —
+which the C++ path, for all its leanness, does not.
+
+So the floor thesis is **confirmed and sharpened**. Removing JavaScript did not
+remove the ~3.3 ms wait — it is structural, paid even by C++ inside Blink — it
+removed the *workaround*. A JavaScript page can now beat the browser-native one by
+hurrying the GPU process along. The CPU still wins, at 0.060 ms, ~8.7× the fastest
+GPU path.
+
+These are fixed-count figures on the custom build and **must not be pooled** with
+the budget-harness numbers above, nor with any stock-Chrome table. Full data:
+[`2026-08-25-custom-chromium-four-way.md`](docs/measurements/2026-08-25-custom-chromium-four-way.md).
 
 ### Settled: LiteRT.js is faster than the hand-written page
 
@@ -893,6 +929,52 @@ invert the ordering between the three GPU paths entirely.
 with `--enable-blink-features=DigitClassifier`, and a secure context. In any other
 browser it says which of those three is missing rather than failing silently. The
 other two pages are unaffected and run anywhere.
+
+#### Applying the flag on a non-rooted phone
+
+Passing a command-line flag to Chrome on Android means writing
+`/data/local/tmp/chrome-command-line` — but on a retail phone Chrome does not read
+that file by default, and it says nothing when it declines to. It reads
+`/data/local/chrome-command-line` instead, a path only root can write, so the
+flags file you wrote is simply never opened. That is what defeated an attempt here
+on 2026-08-24, which misread the silence as an SELinux denial.
+
+`CommandLineInitUtil.java` uses the writable `/data/local/tmp` copy only when
+`Settings.Global.DEBUG_APP` names the package and adb is enabled, when Android is
+an `eng`/`userdebug` build, or when Chrome's own `CommandLineOnNonRooted` feature
+is on. None of it depends on the APK being debuggable — a release build is fine.
+So mark the package as the debug app first:
+
+```bash
+adb shell am set-debug-app --persistent org.chromium.chrome
+# should that be refused, write the same setting directly:
+adb shell settings put global debug_app org.chromium.chrome
+adb shell settings get global debug_app   # must print org.chromium.chrome
+
+adb shell 'echo "chrome --enable-blink-features=DigitClassifier" > /data/local/tmp/chrome-command-line'
+adb shell chmod 644 /data/local/tmp/chrome-command-line
+adb shell am force-stop org.chromium.chrome   # the file is only re-read on a cold start
+```
+
+Two details worth knowing before debugging a failure: the first token in the file
+is a dummy `argv[0]` and is thrown away, so dropping the leading `chrome` silently
+eats the real flag; and the launch warning *"Your device is a user build; Chrome
+may or may not pick up your commandline flags"* is printed either way and means
+nothing. The *Command Line* row on `chrome://version` is the honest answer.
+
+The setting survives reboots but any tool that calls `set-debug-app` for another
+package clears it. To avoid depending on it, turn on **"Enable command line on
+non-rooted devices"** at `chrome://flags#enable-command-line-on-non-rooted-devices`
+— it lives in the profile, needs no adb, and is cached at startup, so restart
+twice before deciding it did not work.
+
+The permanent fix is in the Chromium checkout rather than on the phone: the
+feature is declared `status: "test"` in `runtime_enabled_features.json5`, which
+means *ContentShell only* and is why the existing "Experimental Web Platform
+features" toggle does nothing for it. Changing that to `status: "experimental"`
+and rebuilding puts it behind `chrome://flags#enable-experimental-web-platform-features`,
+after which no command line is involved at all — at the price of a rebuild and a
+715 MB reinstall.
 
 ## The experiment
 

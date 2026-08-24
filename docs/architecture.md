@@ -552,6 +552,44 @@ fence, it just does enough normal work to keep it moving. The hand-written page,
 once it stops waiting quietly and asks from every task, simply asks far more
 often.
 
+### 7.6 The C++ browser API proves the floor is real
+
+The three points so far are all JavaScript. The custom Chromium build adds a
+fourth that is not: `navigator.digitclassifier` runs the whole inference in Blink
+C++, with no JavaScript in the timed region at all (§3's third diagram). If the
+wait were a cost of JavaScript, the page, or the runtime, this is where it would
+disappear.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant P as page
+    participant C as Blink C++
+    participant CR as Chrome GPU process
+    participant GPU as GPU
+    P->>C: await model.classify(2352 floats)
+    C->>CR: submit upload, dispatch, readback
+    C->>C: block on the result
+    CR->>GPU: run
+    GPU-->>CR: fence signalled, work done in microseconds
+    Note over CR: nothing queries the fence, and there is no JavaScript to poll it
+    Note over C,GPU: about 3.73 ms — the same floor, paid in C++
+    CR-->>P: one integer
+```
+
+It does not disappear. Measured on the custom build it is **3.73 ms** (CV 1.7%),
+the *slowest* GPU path — it does the readback the ordinary way and never pokes the
+fence, so it pays the full wait every call, and the low CV is the tell: a path
+sitting on the floor run after run. That confirms §7.1 from the strongest possible
+direction — the ~3.3 ms is not the page, the language, or the runtime. And it
+inverts the third experiment's expectation: the leanest stack is now the slowest
+GPU path, because the hand-written JavaScript page beside it (0.52 ms) hurries the
+GPU process along and the C++ one does not. So the full spectrum, from most checks
+to none: fence-poll **0.52 ms** → LiteRT's incidental nudges **1.43 ms** →
+browser-native, checks nothing, **3.73 ms**. (Custom Chromium 153, fixed-count
+harness, kept apart from the stock figures;
+[data](measurements/2026-08-25-custom-chromium-four-way.md).)
+
 ---
 
 Reading an architecture predicts what it must *carry*. It does not predict what
