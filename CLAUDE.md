@@ -210,6 +210,10 @@ per experiment. The README documents the method, not a script to run.
 
 - `docs/measurements/` — raw data behind every published number, one file per
   measurement session, each stating device, browser and protocol.
+- `docs/architecture.md` — "Three Paths to One Inference": the API stack each
+  page uses, diagrammed, plus an a-priori prediction of memory and time written
+  *before* the measurements. It gets memory right and time backwards on purpose;
+  that gap is the point.
 - `docs/superpowers/specs/`, `docs/superpowers/plans/` — the design spec and
   implementation plan for the direct-WebGPU experiment.
 
