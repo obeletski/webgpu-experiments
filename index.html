@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LiteRT.js MNIST Classifier</title>
+  <title>LiteRT.js — CPU vs GPU</title>
   <style>
     /* The canvas drives the layout: it shrinks to fit a narrow or a short
        viewport, and the panel is sized from it, so the whole app fits on
@@ -234,8 +234,8 @@
 </head>
 <body>
 
-  <h1>MNIST Handwritten Digit Classifier</h1>
-  <p>Draw a single digit (0-9) clearly in the center of the box</p>
+  <h1>LiteRT.js — CPU vs GPU</h1>
+  <p>One MNIST model, one runtime, two backends — WebAssembly (CPU) and WebGPU. Draw a single digit (0-9) clearly in the center of the box.</p>
 
   <div class="app-container">
     <!-- Visual Canvas for Smooth UI Interaction -->
@@ -293,6 +293,8 @@
       };
     }
 
+    // Start a stroke: capture the pointer and drop a dot so a single tap still
+    // leaves ink. One path handles mouse, touch and stylus alike.
     function startDrawing(e) {
       isDrawing = true;
       // Capture keeps the stroke alive when the pointer wanders off the canvas.
@@ -304,6 +306,8 @@
       ctx.stroke();
     }
 
+    // Extend the live stroke to the pointer's latest point, a no-op until a
+    // stroke is armed. preventDefault keeps a touch-drag from scrolling the page.
     function draw(e) {
       if (!isDrawing) return;
       e.preventDefault(); // Stop screen bouncing on mobile
@@ -312,6 +316,8 @@
       ctx.stroke();
     }
 
+    // Finish the stroke and release the pointer capture, guarded so a stray
+    // pointerup with nothing in progress does nothing.
     function stopDrawing(e) {
       if (!isDrawing) return;
       isDrawing = false;
@@ -333,6 +339,8 @@
       window.addEventListener('touchend', stopDrawing);
     }
 
+    // Clear button: wipe the canvas and the last result so the next digit starts
+    // from a blank frame.
     document.getElementById('clearBtn').addEventListener('click', () => {
       ctx.clearRect(0, 0, paintCanvas.width, paintCanvas.height);
       resultDiv.innerHTML = 'Canvas cleared.';
@@ -371,6 +379,8 @@
     let gpuAvailable = false;
     let busy = false;
 
+    // Gate every control while a compile or an inference is in flight. The GPU
+    // button stays disabled too whenever no GPU backend is available at all.
     function setBusy(value) {
       busy = value;
       cpuBtn.disabled = value;
@@ -378,6 +388,8 @@
       predictBtn.disabled = value || !model;
     }
 
+    // Reflect the active backend on the two toggle buttons; aria-pressed drives
+    // their visual state, so the UI always shows which backend `model` holds.
     function paintToggle() {
       cpuBtn.setAttribute('aria-pressed', String(accelerator === 'wasm'));
       gpuBtn.setAttribute('aria-pressed', String(accelerator === 'webgpu'));
@@ -434,6 +446,9 @@
       paintToggle();
     }
 
+    // Handle a backend button press: recompile for the target, and on any failure
+    // fall back to the backend that was working so the page is never left without
+    // a usable model.
     async function switchTo(target) {
       if (busy || target === accelerator) return;
 
@@ -463,6 +478,7 @@
       }
     }
 
+    // Human-readable name for a backend id, for the status line.
     function label(target) {
       return target === 'webgpu' ? 'GPU (webgpu)' : 'CPU (wasm)';
     }
@@ -470,6 +486,10 @@
     cpuBtn.addEventListener('click', () => switchTo('wasm'));
     gpuBtn.addEventListener('click', () => switchTo('webgpu'));
 
+    // One-time startup: load the LiteRT runtime (local files, else the CDN),
+    // fetch the model once, probe the GPU, then compile - GPU first, CPU as the
+    // fallback. Every one-time cost is timed into `timings` and logged, so it
+    // never smears into the steady-state numbers.
     async function initModel() {
       resultDiv.innerText = 'Loading LiteRT Model...';
       setBusy(true);
@@ -717,6 +737,9 @@
       return { values, mean: elapsed / TIMING_RUNS, runs: TIMING_RUNS };
     }
 
+    // Return a probability vector. This model already softmaxes, so a vector that
+    // sums to 1 passes through untouched; anything else is softmaxed here, a guard
+    // for a model that emits raw logits.
     function toProbabilities(values) {
       const sum = values.reduce((a, b) => a + b, 0);
       if (Math.abs(sum - 1) < 0.01) return values; // Model already applies softmax
@@ -726,6 +749,9 @@
       return exps.map(v => v / expSum);
     }
 
+    // Classify what is drawn: preprocess to the input tensor, run the timed
+    // inference, and render the argmax digit with its confidence and mean latency.
+    // Guards against an empty canvas and a model that is not ready yet.
     predictBtn.addEventListener('click', async () => {
       if (!model || busy) {
         resultDiv.innerText = 'Model is not ready yet, please wait...';

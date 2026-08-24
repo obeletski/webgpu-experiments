@@ -272,6 +272,8 @@
       };
     }
 
+    // Start a stroke: capture the pointer and drop a dot so a single tap still
+    // leaves ink. One path handles mouse, touch and stylus alike.
     function startDrawing(e) {
       isDrawing = true;
       // Capture keeps the stroke alive when the pointer wanders off the canvas.
@@ -283,6 +285,8 @@
       ctx.stroke();
     }
 
+    // Extend the live stroke to the pointer's latest point, a no-op until a
+    // stroke is armed. preventDefault keeps a touch-drag from scrolling the page.
     function draw(e) {
       if (!isDrawing) return;
       e.preventDefault(); // Stop screen bouncing on mobile
@@ -291,6 +295,8 @@
       ctx.stroke();
     }
 
+    // Finish the stroke and release the pointer capture, guarded so a stray
+    // pointerup with nothing in progress does nothing.
     function stopDrawing(e) {
       if (!isDrawing) return;
       isDrawing = false;
@@ -312,6 +318,8 @@
       window.addEventListener('touchend', stopDrawing);
     }
 
+    // Clear button: wipe the canvas and the last result so the next digit starts
+    // from a blank frame.
     document.getElementById('clearBtn').addEventListener('click', () => {
       ctx.clearRect(0, 0, paintCanvas.width, paintCanvas.height);
       resultDiv.innerHTML = 'Canvas cleared.';
@@ -459,6 +467,8 @@
     let coldMs;         // cost of the first classify() after that
     let busy = false;
 
+    // Gate the Classify button while a classify() is in flight, and keep it
+    // disabled until the model has been acquired.
     function setBusy(value) {
       busy = value;
       predictBtn.disabled = value || !model;
@@ -470,6 +480,8 @@
       return value > 0 ? `${value.toFixed(2)} ms` : '<1 ms';
     }
 
+    // Render the two one-time costs - getModel() and the cold first classify() -
+    // on their own line, kept apart from any per-classification result.
     function paintApiInfo() {
       apiInfo.innerHTML =
         `<span class="timing">getModel() ${ms(getModelMs)}</span>` +
@@ -542,6 +554,9 @@
       return { digit, mean: elapsed / TIMING_RUNS, runs: TIMING_RUNS };
     }
 
+    // One-time startup: bail early with an explanation if the API, a secure
+    // context or WebGPU is missing; otherwise acquire the model once and pay its
+    // cold first classify() here - both timed and reported, off the user's click.
     async function initModel() {
       if (!window.isSecureContext || !('digitclassifier' in navigator) || !navigator.gpu) {
         explainUnsupported();
@@ -584,6 +599,9 @@
       setBusy(false);
     }
 
+    // Classify what is drawn: preprocess to the input the C++ expects, run the
+    // timed classify(), and render the digit and mean latency. The API returns
+    // only the winning digit, so there is no confidence to show.
     predictBtn.addEventListener('click', async () => {
       if (!model || busy) {
         resultDiv.innerText = 'Model is not ready yet, please wait...';

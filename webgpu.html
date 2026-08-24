@@ -278,6 +278,8 @@
       };
     }
 
+    // Start a stroke: capture the pointer and drop a dot so a single tap still
+    // leaves ink. One path handles mouse, touch and stylus alike.
     function startDrawing(e) {
       isDrawing = true;
       // Capture keeps the stroke alive when the pointer wanders off the canvas.
@@ -289,6 +291,8 @@
       ctx.stroke();
     }
 
+    // Extend the live stroke to the pointer's latest point, a no-op until a
+    // stroke is armed. preventDefault keeps a touch-drag from scrolling the page.
     function draw(e) {
       if (!isDrawing) return;
       e.preventDefault(); // Stop screen bouncing on mobile
@@ -297,6 +301,8 @@
       ctx.stroke();
     }
 
+    // Finish the stroke and release the pointer capture, guarded so a stray
+    // pointerup with nothing in progress does nothing.
     function stopDrawing(e) {
       if (!isDrawing) return;
       isDrawing = false;
@@ -318,6 +324,8 @@
       window.addEventListener('touchend', stopDrawing);
     }
 
+    // Clear button: wipe the canvas and the last result so the next digit starts
+    // from a blank frame.
     document.getElementById('clearBtn').addEventListener('click', () => {
       ctx.clearRect(0, 0, paintCanvas.width, paintCanvas.height);
       resultDiv.innerHTML = 'Canvas cleared.';
@@ -439,6 +447,8 @@
     // reporting the zero-input answer for whatever was actually drawn.
     let busy = false;
 
+    // Enable or disable the three GPU controls as a group, and set the `busy`
+    // re-entrancy flag (see the note above) in one place.
     function setEnabled(on) {
       busy = !on;
       predictBtn.disabled = !on;
@@ -677,6 +687,8 @@ fn main() {
       }
     }
 
+    // Acquire a WebGPU device, or throw a specific reason (no WebGPU, no adapter)
+    // that initEngine can surface to the user.
     async function getDevice() {
       if (!navigator.gpu) throw new Error('This browser does not support WebGPU.');
       const adapter = await navigator.gpu.requestAdapter();
@@ -684,8 +696,20 @@ fn main() {
       return adapter.requestDevice();
     }
 
+    // Build everything the GPU needs and hand back a small engine object. Called
+    // once: it uploads the four weight tensors into their own storage buffers and
+    // allocates the reused input / result / readback buffers, then exposes run()
+    // plus a fused <-> per-layer mode switch. The weights never move again; each
+    // inference only rewrites the input buffer and reads 10 floats back.
+    //   - fused:     one dispatchWorkgroups(1) at workgroup_size 128, the hidden
+    //                layer kept in var<workgroup> - the whole model in one shader.
+    //   - per-layer: three dispatches through storage buffers, the way a general
+    //                runtime must work; the gap between the two is the dispatch-cost
+    //                measurement this page exists to make.
     function createEngine(device, weights) {
       const S = GPUBufferUsage.STORAGE;
+      // mk uploads a Float32Array into a fresh buffer at creation; empty allocates
+      // an uninitialised buffer. Both run once here, off the timed path.
       const mk = (data, usage) => {
         const b = device.createBuffer({ size: data.byteLength, usage, mappedAtCreation: true });
         new Float32Array(b.getMappedRange()).set(data);
@@ -694,14 +718,18 @@ fn main() {
       };
       const empty = (bytes, usage) => device.createBuffer({ size: bytes, usage });
 
-      // W1 arrives from the .tflite as [128][2352] - output-major. That is the
-      // worst layout for the inner loop: at step i the 128 lanes read
-      // w1[t*2352 + i], addresses 9408 bytes apart, so every lane costs its own
-      // memory transaction and a 1.2 MB matrix is fetched a cache line at a time
-      // to use 4 bytes of each. Transposing to [2352][128] makes lane t read
-      // w1T[i*128 + t] - 128 consecutive floats, one coalesced burst per step.
-      // The arithmetic and its order are untouched, so results stay bit-identical;
-      // only the addressing changes. Done once at upload, off the timed path.
+      // W1 arrives from the .tflite as [128][2352] - output-major, so the fused
+      // kernel's inner loop indexed w1[t*2352 + i] and the 128 lanes read
+      // addresses 9408 bytes apart: no coalescing. Transposing to [2352][128]
+      // makes lane t read w1T[i*128 + t] - 128 consecutive floats, one coalesced
+      // burst per step. The arithmetic and its order are untouched, so results
+      // stay bit-identical; only the addressing changes. Done once at upload.
+      //
+      // Measured, this buys nothing: at batch-1 the weight read is off the
+      // critical path - the CPU<->GPU round-trip dominates - so fused stayed at
+      // ~3.26 ms with or without it (docs/measurements/2026-08-24-coalesce-w1-ab.md).
+      // Kept anyway: it is the layout a larger model would need, and it costs
+      // nothing at run time.
       const transpose = (src, rows, cols) => {
         const dst = new Float32Array(src.length);
         for (let r = 0; r < rows; r++) {
@@ -725,6 +753,8 @@ fn main() {
       const built = {};
       let mode = 'fused';
 
+      // Compile the single fused shader and bind all six buffers to it: one pass,
+      // one workgroup, the whole inference in one dispatch.
       function buildFused() {
         const pipeline = device.createComputePipeline({
           layout: 'auto',
@@ -738,6 +768,8 @@ fn main() {
         return { passes: [{ pipeline, bind, groups: 1 }] };
       }
 
+      // Compile the three per-layer shaders (dense -> dense -> softmax), each its
+      // own dispatch through storage buffers. stage() compiles and binds one.
       function buildLayered() {
         const stage = (code, buffers, groups) => {
           const pipeline = device.createComputePipeline({
@@ -761,11 +793,17 @@ fn main() {
         };
       }
 
+      // Select fused or per-layer, compiling that mode's pipelines on first use
+      // and caching them so a later switch back is instant.
       function setMode(next) {
         mode = next;
         if (!built[next]) built[next] = next === 'fused' ? buildFused() : buildLayered();
       }
 
+      // One inference: upload the input, record the mode's dispatch(es) into a
+      // compute pass, copy the 10 result floats into the MAP_READ buffer, submit,
+      // then block on mapAsync until the GPU answers. That await is the CPU<->GPU
+      // round-trip that dominates this page's time (see the README's trace).
       async function run(input) {
         device.queue.writeBuffer(buf.input, 0, input);
         const enc = device.createCommandEncoder();
@@ -860,6 +898,7 @@ fn main() {
       paintToggle();
     }
 
+    // Reflect the engine's current dispatch mode on the two toggle buttons.
     function paintToggle() {
       fusedBtn.setAttribute('aria-pressed', String(engine && engine.mode === 'fused'));
       layeredBtn.setAttribute('aria-pressed', String(engine && engine.mode === 'layered'));
@@ -891,6 +930,11 @@ fn main() {
     fusedBtn.addEventListener('click', () => switchMode('fused'));
     layeredBtn.addEventListener('click', () => switchMode('layered'));
 
+    // One-time startup: fetch and parse the .tflite for its weights, acquire a GPU
+    // device (wiring device-lost to a message), verify every shader compiles, then
+    // build the engine and warm the fused mode. Weights and device are acquired
+    // once here; classification afterwards touches neither. Anything that throws
+    // leaves the drawing UI alive - see the catch on the initEngine() call below.
     async function initEngine() {
       resultDiv.innerText = 'Loading weights...';
       const res = await fetch('./digit_classifier.tflite');
@@ -909,6 +953,9 @@ fn main() {
       setEnabled(true);
     }
 
+    // Classify what is drawn: preprocess to 2352 floats, run the timed inference
+    // on the active mode, and render the argmax digit with confidence and mean
+    // latency. Guards an empty canvas and a not-yet-ready engine.
     predictBtn.addEventListener('click', async () => {
       if (busy) return;
       if (!engine) {
