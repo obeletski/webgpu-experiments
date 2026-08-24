@@ -172,7 +172,7 @@ sequenceDiagram
     end
     G-->>P: 10 floats
     P->>G: read.unmap()
-    Note right of P: two submits overlap the round-trip; one persistent MAP_READ buffer, reused
+    Note right of P: two submits overlap the round-trip — one persistent MAP_READ buffer, reused
 ```
 
 ```mermaid
@@ -388,14 +388,171 @@ The compute and the readback became two separate submits (**~2.75 ms** fused,
 wait turned out to be **Chrome's lazy fence servicing, not a round-trip**:
 left alone, the GPU process takes ~2.5 ms to notice that microseconds of work
 have finished. Polling `onSubmittedWorkDone` from each fresh task while the
-`mapAsync` is pending forces the check, and the page lands at **~0.38 ms fused /
-~0.41 ms per-layer**, past LiteRT's 1.61 ms by ~4×, bit-identical output, each
-call still waiting for its own result
-([data](measurements/2026-08-24-webgpu-mapasync-poll.md)). The one-behind
+`mapAsync` is pending forces the check, and a 3-session re-measure lands the
+median at **~0.46 ms fused / ~0.40 ms per-layer**, past LiteRT's ~1.57 ms,
+bit-identical output, each call still waiting for its own result
+([data](measurements/2026-08-24-webgpu-mapasync-poll.md),
+[3-session](measurements/2026-08-24-fence-poll-3session.json)). The one-behind
 pipeline (the 0.48 ms) remains deliberately out of the page — the poll is not
 pipelining; it accelerates a single one-shot classification the same way. The
 CPU's margin over the best GPU path narrows from 17.9× to ~4× and the thesis
-holds either way.
+holds either way — **but the fence-poll figure is the least settled number in
+this document** (fused CV ~45%, per-layer ~56%, a ~1 ms tail every session),
+because the poll's latency rides event-loop scheduling. See §7 for the shape of
+it, drawn.
+
+---
+
+## 7. The wait, drawn
+
+Three sequence diagrams carry the whole story of the hand-written page's time —
+where it went, and how it came back. §1's stacks predicted the runtime *layers*
+were the cost; these show the cost was one thing none of those layers contained:
+whether anyone was asking the GPU process if the work had finished.
+
+### 7.1 Why the direct-GPU path was slow
+
+The dispatch is 0.605 MFLOP — microseconds of arithmetic. The readback is 40
+bytes. Yet a bare `await mapAsync` measured **~3.3 ms**. The reason is not a
+physical CPU↔GPU round-trip: it is that after the submit, *nothing asks Chrome's
+GPU process to check the completion fence*, and on Android that servicing is lazy.
+The 10 result floats sit ready in the buffer for almost the entire wait.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant JS as page
+    participant CR as Chrome GPU process
+    participant GPU as GPU
+    JS->>CR: submit (compute + copy, one encoder)
+    JS->>JS: await mapAsync — blocks
+    CR->>GPU: dispatch, then copy 40 B
+    GPU-->>CR: fence signalled (work done in ~µs)
+    Note over CR: no one queries the fence, so the process does not notice
+    Note over JS,GPU: ~3.3 ms elapse — GPU idle, result ready, JS still blocked
+    CR-->>JS: mapAsync resolves once lazy servicing catches up
+    Note over JS: read 10 floats — they were ready almost the whole time
+```
+
+The tell was an earlier result: keeping a second inference *in flight* dropped the
+per-call time to 0.48 ms. A physical round-trip cannot shrink because more work
+arrives while you wait — but a lazily-polled fence resolves the instant something
+makes the process look.
+
+### 7.2 Before — one submit, block idle
+
+The original `run()`: encode the compute pass and the 40-byte copy into one
+command buffer, submit once, and block on the map. ~**3.26 ms**, nearly all of it
+the lazy-fence wait above, with the CPU parked.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant JS as page
+    participant GPU as GPU
+    JS->>GPU: writeBuffer(input, 2352 floats)
+    JS->>GPU: encode compute + copyBufferToBuffer
+    JS->>GPU: queue.submit (one submit)
+    JS->>JS: await mapAsync — parked, nothing polls the fence
+    GPU-->>JS: 10 floats (~3.26 ms later)
+```
+
+### 7.3 After — poll the fence
+
+The current `run()`: compute and copy in **two** submits (so the GPU begins while
+the CPU is still encoding the copy), then, while the map is pending, request a
+fresh `onSubmittedWorkDone()` from **each macrotask** — the yield is a
+`MessageChannel` message, not `setTimeout`, which would clamp the cadence to ≥1 ms
+and defeat it. Every query forces the fence check the map is waiting on, and the
+map resolves in ~0.4 ms. No inference is ever ahead of another: each call returns
+its own result, verified bit-identical.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant JS as page
+    participant CR as Chrome GPU process
+    participant GPU as GPU
+    JS->>GPU: writeBuffer(input)
+    JS->>CR: submit (compute) — checks the fence
+    JS->>CR: submit (copy 40 B) — checks the fence
+    JS->>GPU: mapAsync — pending
+    loop until the map settles
+        JS->>JS: yield to a fresh task (MessageChannel)
+        JS->>CR: onSubmittedWorkDone — check the fence again
+        CR->>GPU: is the fence signalled?
+        GPU-->>CR: not yet, then yes
+    end
+    CR-->>JS: mapAsync resolves — about 0.4 ms median
+    Note over JS: many checks, one from every task — far more than LiteRT's few, and each call still waits for its own result
+```
+
+### 7.4 The three variants, side by side
+
+| Variant | `run()` shape | fused median | CV |
+| --- | --- | ---: | ---: |
+| **Before** | compute + copy, one submit, `await mapAsync` | ~3.26 ms | ~2% |
+| Two-submit | compute; then copy; `await mapAsync` | ~2.75 ms | — |
+| **Fence-poll** | + `onSubmittedWorkDone()` per task while map pending | **~0.46 ms** | **~45%** |
+
+Two honest caveats live in that table. First, the fence-poll is **not free**: the
+loop spins the CPU issuing fence queries until the map lands, so the "fast GPU
+path" now spends CPU to hurry the GPU along. Second, the **CV**: the fence-poll
+median reproduces across sessions but its spread is wide and scheduling-dependent
+(per-layer ~56%, a ~1 ms tail every session), because the poll's latency rides
+whatever else the event loop is doing. It is at once the fastest GPU path measured
+here and the least settled number in this document — both are true, and it is also
+specific to stock Chrome on this Adreno; another browser or driver may service the
+fence differently.
+
+### 7.5 And LiteRT.js? It avoids the delay without fixing it
+
+The obvious question: if the direct-GPU page was stuck at ~3.3 ms waiting on a
+fence nobody checked, how does LiteRT.js reach ~1.6 ms on the *same* Chrome and
+the *same* GPU? Not by fixing the delay — the lazy fence is still there. LiteRT
+never polls: it issues no `onSubmittedWorkDone` and runs no loop. It stays fast
+enough anyway, because of the ordinary work it does on every inference. Each of
+those small operations is a piece of traffic to the GPU process, and each one
+makes the process check the fence:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant JS as LiteRT page
+    participant CR as Chrome GPU process
+    participant GPU as GPU
+    JS->>CR: model.run — submit compute (checks the fence)
+    Note over JS: run() returns at once, does not wait — about 0.1 ms
+    JS->>CR: data() — allocate a fresh MAP_READ buffer
+    JS->>CR: data() — submit the copy (checks the fence again)
+    JS->>GPU: mapAsync — pending
+    Note over CR: these submits and the buffer work check the fence a few times per inference
+    Note over JS,GPU: a few checks — map resolves in about 1.6 ms
+    CR-->>JS: mapAsync resolves
+    JS->>CR: tensor.delete, free the buffer
+    Note over JS: all normal work — LiteRT never checks the fence on purpose
+```
+
+Every inference does two submits — the compute from `model.run()`, the readback
+copy from `data()` — allocates and frees a fresh `MAP_READ` buffer, and deletes
+its tensors. Each submit is a small piece of traffic to the GPU process, and each
+one makes it check the completion fence. So the fence gets checked **a few times
+per inference** — enough to resolve the map in ~1.6 ms instead of the idle page's
+~3.3 ms, but far fewer times than the ~0.4 ms fence-poll, which forces a check
+from *every* event-loop task.
+
+The trace measured this shape. `model.run()` alone is **0.1 ms** — it only
+enqueues. An isolated `data()` on a reused output tensor is **3.5 ms** — a full
+lazy wait, because nothing is checking the fence. Yet the real `run()` → `data()`
+loop is **1.6 ms**, *faster* than an isolated `data()`, because each inference's
+compute submit makes the process check the earlier map
+([trace](measurements/2026-08-24-litert-vs-handwritten-tracing.md)). LiteRT's
+1.6 ms is the middle of the spectrum §7.4 lays out: it does not fix the lazy
+fence, it just does enough normal work to keep it moving. The hand-written page,
+once it stops waiting quietly and asks from every task, simply asks far more
+often.
+
+---
 
 Reading an architecture predicts what it must *carry*. It does not predict what
 it must *wait for* — nor that most of the wait was nobody checking whether the
