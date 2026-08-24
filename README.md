@@ -16,10 +16,13 @@ part of the comparison.
 
 **Result: the CPU wins on every device tested**, by 7.7× against a real mobile
 GPU. A [second experiment](#second-experiment-direct-webgpu) rewrote the same
-inference directly against the WebGPU API to find out why: removing LiteRT.js
-entirely buys 1.34×, a dispatch costs well under a millisecond, and **~3 ms of
-per-call overhead remains that no amount of tuning removes**. The CPU stays 5.7×
-ahead of the best GPU path.
+inference directly against the WebGPU API to find out why: a dispatch costs well
+under a millisecond, and **~3 ms of per-call overhead remains that no amount of
+tuning removes**. The CPU stays 5.7× ahead of the best GPU path. That experiment
+also reported that removing LiteRT.js bought 1.34× — **which turned out to be an
+under-sampling artefact.** Properly sampled, LiteRT.js is
+[1.93× *faster*](#settled-litertjs-is-faster-than-the-hand-written-page) than the
+hand-written page on the same browser.
 
 A [third experiment](#third-experiment-a-model-built-into-the-browser) removed
 JavaScript from the question altogether, putting the model *inside* a custom
@@ -471,6 +474,14 @@ Removing the runtime entirely buys **1.34×** over LiteRT's WebGPU backend — s
 LiteRT does add roughly 1.1 ms of its own overhead. But the CPU is still **5.7×
 faster than the best GPU path**, with nothing left to strip out.
 
+> [!WARNING]
+> **The 1.34× is not real.** Both rows behind it were measured at the old 5 ms
+> timing budget, where LiteRT's GPU row carried a CV of 49.1%. Re-measured on the
+> same stock Chrome with 100 runs per sample, the ordering reverses: LiteRT.js is
+> **1.93× faster** than the hand-written page, on disjoint distributions. See
+> [Settled](#settled-litertjs-is-faster-than-the-hand-written-page). The "~1.1 ms
+> of LiteRT overhead" in the row below inherits the same defect.
+
 ### What this settles
 
 The first experiment blamed per-call fixed overhead rather than arithmetic. That
@@ -602,6 +613,36 @@ row at CV 49.1% — the identical under-sampling defect this re-run exposed. It
 needs re-measuring at a 50 ms budget on stock Chrome before it can be trusted, and
 only then will it be clear whether the inversion is a browser difference or was
 never there.
+
+### Settled: LiteRT.js is faster than the hand-written page
+
+That re-measurement has now been done, and **the inversion was never a browser
+difference.** Stock Chrome 150.0.7871.188, content from the Pages site over HTTPS,
+fixed clocks, Chrome force-stopped between pages, 3 sessions × 5 samples per page
+— and the fixed-count harness at 100 runs per sample rather than a time budget:
+
+| Implementation | Page | n | Median | CV | Range |
+| --- | --- | ---: | ---: | ---: | --- |
+| **LiteRT.js — GPU (webgpu)** | `index.html` | 15 | **1.68 ms** | **7.4%** | 1.46 – 1.91 |
+| **Direct WebGPU — fused** | `webgpu.html` | 15 | **3.24 ms** | **6.5%** | 2.80 – 3.42 |
+
+**LiteRT.js is 1.93× faster.** The distributions are disjoint — LiteRT's slowest
+sample (1.91 ms) is below the hand-written page's fastest (2.80 ms); U = 225 of
+225, permutation two-sided p = 0.00004. The margin is *wider* than the 1.73×
+measured on custom Chromium 153, so the effect is not specific to that build.
+
+So the second experiment's headline claim is reversed: **removing LiteRT.js does
+not buy 1.34×, it costs 1.93×.** The runtime this page was written to beat is
+faster than the page. What survives untouched is everything the experiment said
+about the *floor* — dispatch is cheap, arithmetic is irrelevant, and ~3 ms of
+per-call overhead remains no matter who writes the code. The CPU is still far
+ahead of both.
+
+Full data: [`docs/measurements/2026-08-24-stock-chrome-litert-vs-webgpu.md`](docs/measurements/2026-08-24-stock-chrome-litert-vs-webgpu.md),
+raw samples in
+[`…-litert-vs-webgpu.json`](docs/measurements/2026-08-24-stock-chrome-litert-vs-webgpu.json).
+These are the first figures in this repository taken with the fixed-count
+harness, so they may not be pooled with any number measured before 2026-08-24.
 
 ### A debug browser can change the answer, not just the timing
 
@@ -890,7 +931,7 @@ cross-origin isolated — `serve.js` does not send the required
 | `screenshot.png` | The image at the top, captured on the Android device |
 | `docs/superpowers/specs/` | Design spec for the direct-WebGPU experiment |
 | `docs/superpowers/plans/` | Its implementation plan |
-| `docs/measurements/` | Raw measurement data behind the reported numbers, including the [three-way comparison](docs/measurements/2026-08-23-custom-chromium-three-way.md) and the [harness verification](docs/measurements/2026-08-24-fixed-count-harness-verification.md) |
+| `docs/measurements/` | Raw measurement data behind the reported numbers, including the [three-way comparison](docs/measurements/2026-08-23-custom-chromium-three-way.md), the [stock-Chrome re-measurement](docs/measurements/2026-08-24-stock-chrome-litert-vs-webgpu.md) that reverses the 1.34×, and the [harness verification](docs/measurements/2026-08-24-fixed-count-harness-verification.md) |
 | `LICENSE` | Apache-2.0 |
 | `CLAUDE.md` | Guidance for Claude Code: the rules that keep the three pages comparable |
 | `.nojekyll` | Stops GitHub Pages running the site through Jekyll |

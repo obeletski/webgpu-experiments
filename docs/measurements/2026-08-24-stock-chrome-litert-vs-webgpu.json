@@ -1,0 +1,295 @@
+{
+  "date": "2026-08-24",
+  "device": {
+    "model": "CPH2653",
+    "name": "OnePlus 13",
+    "soc": "Snapdragon 8 Elite",
+    "gpu": "Adreno 830",
+    "os": "Android 16 / API 36"
+  },
+  "browser": {
+    "package": "com.android.chrome",
+    "name": "stock Chrome",
+    "version": "150.0.7871.188"
+  },
+  "content": {
+    "origin": "https://obeletski.github.io/webgpu-experiments/",
+    "protocol": "https"
+  },
+  "harness": {
+    "mode": "fixed count",
+    "timing_runs": 100,
+    "url_overrides": null,
+    "warmup": "4 s burst of Classify activations before sampling"
+  },
+  "protocol": {
+    "fixed_performance_mode": true,
+    "restored_after": true,
+    "chrome_force_stopped_between_pages": true,
+    "sessions": 3,
+    "samples_per_session": 5,
+    "page_order": [
+      "webgpu.html",
+      "index.html"
+    ],
+    "readout": "chrome devtools protocol over adb forward tcp:9222 (deviation from screencap)"
+  },
+  "sessions": [
+    {
+      "rep": 1,
+      "page": "webgpu.html",
+      "info": "pipeline <1 ms cold start 7.90 ms",
+      "warmup_classifications": 12,
+      "samples": [
+        {
+          "digit": 1,
+          "ms": 3.38,
+          "path": "fused",
+          "runs": 100
+        },
+        {
+          "digit": 1,
+          "ms": 3.27,
+          "path": "fused",
+          "runs": 100
+        },
+        {
+          "digit": 1,
+          "ms": 3.42,
+          "path": "fused",
+          "runs": 100
+        },
+        {
+          "digit": 1,
+          "ms": 3.11,
+          "path": "fused",
+          "runs": 100
+        },
+        {
+          "digit": 1,
+          "ms": 3.2,
+          "path": "fused",
+          "runs": 100
+        }
+      ]
+    },
+    {
+      "rep": 1,
+      "page": "index.html",
+      "info": "compile 93.50 ms cold start 62.30 ms",
+      "warmup_classifications": 22,
+      "samples": [
+        {
+          "digit": 1,
+          "ms": 1.78,
+          "path": "webgpu",
+          "runs": 100
+        },
+        {
+          "digit": 1,
+          "ms": 1.58,
+          "path": "webgpu",
+          "runs": 100
+        },
+        {
+          "digit": 1,
+          "ms": 1.91,
+          "path": "webgpu",
+          "runs": 100
+        },
+        {
+          "digit": 1,
+          "ms": 1.85,
+          "path": "webgpu",
+          "runs": 100
+        },
+        {
+          "digit": 1,
+          "ms": 1.72,
+          "path": "webgpu",
+          "runs": 100
+        }
+      ]
+    },
+    {
+      "rep": 2,
+      "page": "webgpu.html",
+      "info": "pipeline <1 ms cold start 32.60 ms",
+      "warmup_classifications": 12,
+      "samples": [
+        {
+          "digit": 1,
+          "ms": 2.81,
+          "path": "fused",
+          "runs": 100
+        },
+        {
+          "digit": 1,
+          "ms": 2.82,
+          "path": "fused",
+          "runs": 100
+        },
+        {
+          "digit": 1,
+          "ms": 3.17,
+          "path": "fused",
+          "runs": 100
+        },
+        {
+          "digit": 1,
+          "ms": 3.18,
+          "path": "fused",
+          "runs": 100
+        },
+        {
+          "digit": 1,
+          "ms": 3.25,
+          "path": "fused",
+          "runs": 100
+        }
+      ]
+    },
+    {
+      "rep": 2,
+      "page": "index.html",
+      "info": "compile 94.70 ms cold start 12.30 ms",
+      "warmup_classifications": 21,
+      "samples": [
+        {
+          "digit": 1,
+          "ms": 1.74,
+          "path": "webgpu",
+          "runs": 100
+        },
+        {
+          "digit": 1,
+          "ms": 1.73,
+          "path": "webgpu",
+          "runs": 100
+        },
+        {
+          "digit": 1,
+          "ms": 1.69,
+          "path": "webgpu",
+          "runs": 100
+        },
+        {
+          "digit": 1,
+          "ms": 1.65,
+          "path": "webgpu",
+          "runs": 100
+        },
+        {
+          "digit": 1,
+          "ms": 1.68,
+          "path": "webgpu",
+          "runs": 100
+        }
+      ]
+    },
+    {
+      "rep": 3,
+      "page": "webgpu.html",
+      "info": "pipeline 0.10 ms cold start 26.10 ms",
+      "warmup_classifications": 12,
+      "samples": [
+        {
+          "digit": 1,
+          "ms": 2.8,
+          "path": "fused",
+          "runs": 100
+        },
+        {
+          "digit": 1,
+          "ms": 3.32,
+          "path": "fused",
+          "runs": 100
+        },
+        {
+          "digit": 1,
+          "ms": 3.24,
+          "path": "fused",
+          "runs": 100
+        },
+        {
+          "digit": 1,
+          "ms": 3.32,
+          "path": "fused",
+          "runs": 100
+        },
+        {
+          "digit": 1,
+          "ms": 3.33,
+          "path": "fused",
+          "runs": 100
+        }
+      ]
+    },
+    {
+      "rep": 3,
+      "page": "index.html",
+      "info": "compile 87.10 ms cold start 13.40 ms",
+      "warmup_classifications": 21,
+      "samples": [
+        {
+          "digit": 1,
+          "ms": 1.46,
+          "path": "webgpu",
+          "runs": 100
+        },
+        {
+          "digit": 1,
+          "ms": 1.63,
+          "path": "webgpu",
+          "runs": 100
+        },
+        {
+          "digit": 1,
+          "ms": 1.59,
+          "path": "webgpu",
+          "runs": 100
+        },
+        {
+          "digit": 1,
+          "ms": 1.51,
+          "path": "webgpu",
+          "runs": 100
+        },
+        {
+          "digit": 1,
+          "ms": 1.56,
+          "path": "webgpu",
+          "runs": 100
+        }
+      ]
+    }
+  ],
+  "derived": {
+    "webgpu.html": {
+      "n": 15,
+      "median_ms": 3.24,
+      "mean_ms": 3.175,
+      "sd_ms": 0.2056,
+      "cv_pct": 6.48,
+      "min_ms": 2.8,
+      "max_ms": 3.42
+    },
+    "index.html": {
+      "n": 15,
+      "median_ms": 1.68,
+      "mean_ms": 1.672,
+      "sd_ms": 0.123,
+      "cv_pct": 7.36,
+      "min_ms": 1.46,
+      "max_ms": 1.91
+    },
+    "comparison": {
+      "ratio_directwebgpu_over_litert": 1.929,
+      "mann_whitney_U": 225,
+      "U_max": 225,
+      "distributions_overlap": false,
+      "permutation_two_sided_p": 4e-05,
+      "permutation_resamples": 200000
+    }
+  }
+}
