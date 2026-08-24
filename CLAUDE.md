@@ -53,9 +53,9 @@ Every page has the same five stages, in this order:
    28×28, filled black *before* `drawImage`, grayscale, normalized to `[0,1]`,
    replicated across 3 channels.
 3. **Infer** — the one part that differs per page.
-4. **Time** — repeat the inference until `TIMING_MIN_MS` accumulates (capped by
-   `TIMING_MAX_RUNS`), after one untimed warm-up run that is discarded; report
-   the mean *and the run count*.
+4. **Time** — run the inference a fixed `TIMING_RUNS` times (default 100) after
+   one untimed warm-up run that is discarded; report the mean *and the run
+   count*.
 5. **Report** — argmax over 10 probabilities.
 
 Stages 1, 2, 4 and 5 are **byte-identical copies** across the three files. That
@@ -128,13 +128,23 @@ Force-stop the browser between pages. Drive the UI with `input swipe` and
 `input tap` so every page classifies an identical drawn digit, and read results
 from `screencap` — page `console.log()` does not reach logcat.
 
-**Mind the timing budget.** The harness repeats an inference until
-`TIMING_MIN_MS` accumulates. At the default 5 ms a 2–3 ms GPU path averages only
-1–3 internal runs, giving CVs of 45–55%; at 50 ms the CVs fall to 3–11% **and the
-medians move**, so the small budget biases the estimate rather than only widening
-its spread. All three pages accept `?timing_min_ms=50&timing_max_runs=200`.
-Defaults are unchanged so older figures stay comparable — every number published
-before 2026-08-24 was taken at 5 ms and carries that defect.
+**One measurement is 100 inferences.** The harness runs a fixed `TIMING_RUNS`
+(default 100) and reports the mean. The count is fixed rather than derived from a
+time budget so that **every backend is sampled alike**: under the old budget a
+0.15 ms CPU path bought ~33 internal runs and a 2–3 ms GPU path only 1–3, so the
+reported spreads were never comparable quantities. Override with
+`?timing_runs=400` on any of the three pages.
+
+100 is a compromise between two errors pulling opposite ways. `performance.now()`
+is clamped to ~1 ms, so the error on the mean is `1 ms ÷ elapsed` — which argues
+for a high count, since the CPU path only reaches ~15 ms of elapsed time at 100.
+Sustained looping also warms clocks and eventually measures throughput rather than
+per-call latency, which argues for a low one. If a result needs defending, raise
+the count and check the median stops moving.
+
+**Every published figure predates this harness** and was taken under the old time
+budget, most of them at 5 ms where the GPU CVs ran 45–55%. Numbers from the
+fixed-count harness cannot go in a table with them.
 
 Fixed-performance mode **only fixes the CPU**; GPU noise is under-sampling, not
 DVFS.

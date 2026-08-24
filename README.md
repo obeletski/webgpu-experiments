@@ -128,15 +128,22 @@ suspects are GPU queue scheduling and under-sampling: a single GPU inference
 already exceeds the harness's 5 ms timing budget, so each GPU figure averages
 only 1–2 internal runs where the CPU averages ~9.
 
-**Under-sampling was the culprit, and it is now fixed.** Both pages accept
-`?timing_min_ms=50&timing_max_runs=200`; the defaults are unchanged so every
-number already published stays comparable. At a 50 ms budget the GPU noise
-collapses — **CV 49% → 3.6%** for the direct-WebGPU page — and the medians move
-too, so the small budget was biasing the estimate rather than only widening it.
-Every GPU figure in the stock-Chrome sections above was measured at 5 ms and
-carries that defect; the
-[re-measurement](#re-measured-the-ordering-really-does-invert) is on the custom
-build only.
+**Under-sampling was the culprit, and the harness has since been rebuilt around
+it.** Re-sampling at a 50 ms budget collapsed the GPU noise — **CV 49% → 3.6%**
+for the direct-WebGPU page — and moved the medians as well, so the small budget
+was biasing the estimate rather than only widening its spread.
+
+The time budget has since been **replaced outright by a fixed 100 runs per
+measurement** (`?timing_runs=` overrides it). A budget bought whichever number of
+runs it could afford, which meant the 0.15 ms CPU path was averaged over ~33 runs
+and a 3 ms GPU path over one to three — the two backends were never sampled
+alike, so their spreads were not comparable quantities in the first place. A fixed
+count samples every path identically.
+
+**Every figure in this README predates that change** and was taken under the
+budget-driven harness. The 50 ms
+[re-measurement](#re-measured-the-ordering-really-does-invert) is the closest
+like-for-like comparison, and it covers the custom build only.
 
 For comparison, desktop headless Chrome with a **SwiftShader software** GPU gave
 CPU 0.14 ms against GPU ~4.4 ms. Treat that GPU column as a lower bound on GPU
@@ -555,11 +562,11 @@ so it was re-measured — see below.
 
 ### Re-measured: the ordering really does invert
 
-The table above under-samples its own GPU rows. The harness repeats an inference
-until `TIMING_MIN_MS` accumulates, so at the default 5 ms budget a path costing
-2–3 ms per call is averaged over one to three internal runs. Both pages now accept
-`?timing_min_ms=50&timing_max_runs=200`, which fixes that without changing any
-default. Re-run at a 50 ms budget, 15 samples each, custom Chromium 153 release:
+The table above under-samples its own GPU rows. The harness of the time repeated
+an inference until `TIMING_MIN_MS` accumulated, so at its default 5 ms budget a
+path costing 2–3 ms per call was averaged over one to three internal runs. It was
+re-run with `?timing_min_ms=50&timing_max_runs=200` — 15 samples each, custom
+Chromium 153 release:
 
 | | n | Median | Mean | SD | CV | Range | Internal runs |
 | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |
@@ -676,24 +683,28 @@ Two measurement traps had to be cleared before any number meant anything.
 (1 ms in a page that is not cross-origin isolated). One CPU inference finishes
 well inside that, so timing a single run *always* read `0.0 ms`.
 
-*Fix:* repeat the inference until ≥5 ms has accumulated (max 50 runs) and report
-the mean, showing the run count so the figure is not mistaken for one inference.
+*Fix:* repeat the inference a fixed number of times and report the mean, showing
+the run count so the figure is not mistaken for one inference.
 
 ```js
-const TIMING_MIN_MS = 5;
-const TIMING_MAX_RUNS = 50;
+const TIMING_RUNS = timingParam('timing_runs', 100);
 
 let values = await runOnce(inputBuffer);   // untimed warm-up, discarded
 
 const started = performance.now();
-do {
+for (let i = 0; i < TIMING_RUNS; i++) {
   values = await runOnce(inputBuffer);
-  runs++;
-  elapsed = performance.now() - started;
-} while (elapsed < TIMING_MIN_MS && runs < TIMING_MAX_RUNS - 1);
+}
+const elapsed = performance.now() - started;
 
-return { values, mean: elapsed / runs, runs };
+return { values, mean: elapsed / TIMING_RUNS, runs: TIMING_RUNS };
 ```
+
+The count is fixed rather than derived from a time budget so that every backend
+is sampled alike — see [the re-measurement](#re-measured-the-ordering-really-does-invert)
+for what the budget-driven version cost. It also lets the loop read the clock
+twice instead of once per iteration. **The figures in this README were taken
+before this change**, under a 5 ms budget (max 50 runs).
 
 **Trap 2 — frozen virtual time.** The first harness drove headless Chrome with
 `--virtual-time-budget` and `--dump-dom`. Under virtual time the clock does not
@@ -784,9 +795,9 @@ grows or shrinks.
   9.5%, spanning 2.07 – 12.10 ms. Fixed performance mode did not fix this, so the
   cause is not DVFS.
 - **Each GPU figure averages only 1–2 internal runs**, because a single GPU
-  inference already exceeds the harness's 5 ms timing budget, where the CPU
-  averages ~9. That under-sampling is the most likely source of the GPU spread,
-  and raising `TIMING_MIN_MS` is the untested fix.
+  inference already exceeds the 5 ms timing budget this run used, where the CPU
+  averages ~9. That under-sampling is the most likely source of the GPU spread;
+  the harness has since moved to a fixed 100 runs, which removes it.
 - **Desktop GPU figures are SwiftShader, i.e. software.** They demonstrate the
   WebGPU code path is correct; they say nothing about real GPU throughput. The
   Android figures are from a real mobile GPU.

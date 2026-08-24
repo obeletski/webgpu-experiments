@@ -779,19 +779,23 @@ fn main() {
     // differs even slightly makes the comparison meaningless.
     // performance.now() is clamped to coarse steps (1 ms in a page that is not
     // cross-origin isolated) and one inference finishes well inside that, so a
-    // single run cannot be timed directly. Repeat until the total is measurable
-    // and report the mean.
+    // single run cannot be timed directly. Repeat, and report the mean.
+    // A fixed count, not a time budget. Under a budget the number of runs was
+    // whatever the budget bought, so the 0.15 ms CPU path averaged ~33 runs and
+    // a 3 ms GPU path only 1-3: the two were not sampled alike, and their
+    // spreads were therefore not comparable quantities. A fixed count samples
+    // every path identically, and lets the loop read the clock twice instead of
+    // once per iteration. 100 is the compromise - it holds the slowest path to
+    // ~0.3 s per click while still giving the CPU ~15 ms of elapsed time, which
+    // the 1 ms clock can resolve to about 7%.
     // Overridable from the URL so a run can be re-sampled without editing the
-    // page: ?timing_min_ms=50&timing_max_runs=200. The defaults are what every
-    // published measurement in this repository used, so leaving them alone keeps
-    // new numbers comparable with old ones.
+    // page: ?timing_runs=400.
     const TIMING_PARAMS = new URLSearchParams(location.search);
     const timingParam = (name, fallback) => {
       const v = Number(TIMING_PARAMS.get(name));
       return Number.isFinite(v) && v > 0 ? v : fallback;
     };
-    const TIMING_MIN_MS = timingParam('timing_min_ms', 5);
-    const TIMING_MAX_RUNS = timingParam('timing_max_runs', 50);
+    const TIMING_RUNS = timingParam('timing_runs', 100);
 
     // Renders a duration, admitting when it fell below the clock's resolution
     // rather than printing a confident "0.00 ms".
@@ -807,16 +811,12 @@ fn main() {
       let values = await engine.run(input);
 
       const started = performance.now();
-      let runs = 0;
-      let elapsed = 0;
-
-      do {
+      for (let i = 0; i < TIMING_RUNS; i++) {
         values = await engine.run(input);
-        runs++;
-        elapsed = performance.now() - started;
-      } while (elapsed < TIMING_MIN_MS && runs < TIMING_MAX_RUNS - 1);
+      }
+      const elapsed = performance.now() - started;
 
-      return { values, mean: elapsed / runs, runs };
+      return { values, mean: elapsed / TIMING_RUNS, runs: TIMING_RUNS };
     }
 
     // These two costs belong to the active dispatch mode, not to any one
