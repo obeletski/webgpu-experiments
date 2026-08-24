@@ -1,0 +1,28 @@
+{
+  "date": "2026-08-24",
+  "device": "OnePlus 13 (CPH2653, Snapdragon 8 Elite, Adreno 830, Android 16 / API 36)",
+  "browser": "stock Chrome 150.0.7871.188 (com.android.chrome)",
+  "protocol": "served locally over adb reverse tcp:8080; driven over DevTools protocol (adb forward tcp:9222); fixed-performance mode on; fused mode; each figure the mean of 1000 inferences, median of 3 repeats",
+  "litert_probe": {
+    "source": "litert-probe.html against @litertjs/core 2.5.3 local build",
+    "wasm_variant": {"jspi": true, "threads": false},
+    "input_buffer_type": "WEB_GPU_BUFFER_PACKED",
+    "output_buffer_type": "WEB_GPU_BUFFER_PACKED",
+    "run_only_ms": 0.101,
+    "data_only_isolated_same_tensor_ms": 3.520,
+    "full_run_plus_data_ms": 1.697
+  },
+  "handwritten_stage_breakdown_ms": {
+    "enqueue_only": 0.124,
+    "compute_plus_onSubmittedWorkDone": 3.259,
+    "compute_copy_mapAsync_reused_buffer_CURRENT": 3.25,
+    "compute_copy_mapAsync_two_submit_fresh_buffer": 2.45,
+    "pipelined_one_in_flight": 0.478
+  },
+  "ab_readback_buffer": {
+    "note": "reuse vs fresh MAP_READ buffer, fused, 3 sessions x 5 samples, timing_runs=1000, median",
+    "reuse_current_ms": 3.280,
+    "fresh_per_call_ms": 3.450
+  },
+  "published_context_ms": {"litert_webgpu": 1.61, "handwritten_fused": 3.26}
+}

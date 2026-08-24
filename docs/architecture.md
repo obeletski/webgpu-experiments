@@ -185,10 +185,12 @@ sequenceDiagram
 ```
 
 **Both GPU paths perform the same four operations**: upload the input, submit a
-compute pass, copy 40 bytes back, await a map. The differences are real but
-small — LiteRT allocates a fresh `MAP_READ` buffer per readback where the
-hand-written page reuses one, and LiteRT issues its readback copy in a separate
-encoder and submit.
+compute pass, copy 40 bytes back, await a map. Two differences look small and one
+is not — LiteRT allocates a fresh `MAP_READ` buffer per readback where the
+hand-written page reuses one (this turns out not to matter), and LiteRT issues its
+readback copy in a separate encoder and submit (this is most of the 2× — it lets
+the round-trip overlap; see [§6](#6-scorecard) and the
+[trace](measurements/2026-08-24-litert-vs-handwritten-tracing.md)).
 
 The CPU path has no diagram of its own because it has no round trip: `model.run`
 goes into XNNPack kernels inside the wasm heap and returns. That is the whole
@@ -358,11 +360,24 @@ reuses one, and it splits its readback into a separate submit. The hand-written
 choice looks more efficient and measures 2× slower.
 
 The heap measurement confirms the allocation difference is real and rules out the
-obvious objection to the hypothesis: LiteRT's GPU path leaves **2,106 B** of
-garbage per inference against the hand-written page's **1,370 B**, so it really
-is allocating more — and winning anyway. **Why is still unexplained**; the leading
-hypothesis is that reusing one buffer serialises each call behind the previous
-`unmap`, which is testable and untested.
+obvious objection: LiteRT's GPU path leaves **2,106 B** of garbage per inference
+against the hand-written page's **1,370 B**, so it really is allocating more — and
+winning anyway.
+
+Of those two visible differences, the buffer is a red herring and the submit is
+the point. [Tracing both paths stage by stage](measurements/2026-08-24-litert-vs-handwritten-tracing.md)
+settles it: switching the hand-written `run()` to a fresh buffer per call was
+*slightly slower*, not faster, so buffer reuse is not the cause. What is left is
+one CPU↔GPU round-trip that costs **~3.3 ms** — the same whether you `mapAsync`
+the result or merely `onSubmittedWorkDone`-wait for it, because it is the *waiting*
+that costs, not the mapping. The hand-written `run()` fuses compute and readback
+into one submit and then blocks idle on it; LiteRT's `run()` returns without
+syncing, making compute and readback two submits that overlap. Keep one inference
+in flight in the hand-written page and its cost falls to **0.48 ms**, beating
+LiteRT — the round-trip was never the shader's or the buffer's, it was the
+serial *wait*, and it hides under pipelining. (This is a throughput result; a
+single classification still pays the round-trip once, which is the "cold start"
+line, and even pipelined the GPU stays above the CPU's 0.09 ms.)
 
 Reading an architecture predicts what it must *carry*. It does not predict what
-it must *wait for*.
+it must *wait for* — nor that the wait is the entire bill.

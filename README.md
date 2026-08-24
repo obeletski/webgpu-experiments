@@ -17,10 +17,15 @@ part of the comparison.
 **Result: the CPU wins on every device tested**, by **17.9×** against a real
 mobile GPU. A [second experiment](#second-experiment-direct-webgpu) rewrote the
 same inference directly against the WebGPU API to find out why: a dispatch costs
-well under a millisecond, and **~3 ms of per-call overhead remains that no amount
-of tuning removes**. That experiment also reported that removing LiteRT.js bought
-1.34× — **which turned out to be an under-sampling artefact.** Properly sampled,
-LiteRT.js is *faster* than the hand-written page, by 2.03×.
+well under a millisecond, and **~3 ms of per-call overhead remains** — the latency
+of a synchronous GPU round-trip, not of the arithmetic. That experiment also
+reported that removing LiteRT.js bought 1.34× — **which turned out to be an
+under-sampling artefact.** Properly sampled, LiteRT.js is *faster* than the
+hand-written page, by 2.03×, and [tracing why](#traced-why-litertjs-is-faster)
+shows the gap is that round-trip: LiteRT overlaps it and the hand-written page
+stalls on it. It is hideable by pipelining — a one-deep pipeline makes the
+hand-written page beat LiteRT — but any *single* classification still pays it in
+full, and even pipelined the GPU stays above the CPU.
 
 A [third experiment](#third-experiment-a-model-built-into-the-browser) removed
 JavaScript from the question altogether, putting the model *inside* a custom
@@ -537,9 +542,13 @@ separate those three** — it measured the dispatch delta and the runtime delta 
 subtracted, so the residual is attributed as a group, not ranked within itself.
 Ranking it would need one more measurement: the same dispatch awaiting
 `onSubmittedWorkDone` instead of `mapAsync`, which isolates readback from submit.
-What is established is that the residual exists, is ~3 ms, and is untouched by
-shader tuning — it is WebGPU's floor for a synchronous request-response
-inference.
+[That measurement has since been done](#traced-why-litertjs-is-faster):
+`onSubmittedWorkDone` costs **3.26 ms**, statistically the same as `mapAsync`'s
+3.34 ms — so the residual is not readback *versus* submit at all, it is the single
+CPU↔GPU round-trip both share, and the sole way to shrink it is to stop waiting on
+it serially. What is established is that the residual exists, is ~3 ms, and is
+untouched by shader tuning — it is WebGPU's floor for a *synchronous*
+request-response inference, and falls only when the round-trip is overlapped.
 
 So the original claim holds in its essentials, quantified: **per-call overhead
 dominates, dispatch is minor, and arithmetic is irrelevant.** The original wording
@@ -631,15 +640,17 @@ noise — **CV 55.5% → 10.6%** and **45.1% → 3.6%** — and moved the median
 (1.43 → 1.81 and 2.50 → 3.13), so the 5 ms budget was biasing the estimate, not
 merely widening it.
 
-**Why LiteRT.js is faster here is not established.** The obvious explanation does
-not survive contact with the source: LiteRT's readback (`@litertjs/core`
+**Why LiteRT.js is faster here is not established** *(at the time — it since was;
+see [Traced](#traced-why-litertjs-is-faster))*. The obvious explanation does not
+survive contact with the source: LiteRT's readback (`@litertjs/core`
 `dist/index.js:1628`) is the same `copyBufferToBuffer` → `submit` → `await
 mapAsync` sequence `webgpu.html` uses, and it issues the copy in its own encoder
 and submit where `webgpu.html` folds it into the compute pass's. The one visible
 difference is that LiteRT allocates a fresh `MAP_READ` buffer per readback while
 `webgpu.html` maps and unmaps one persistent buffer every call, which could
 serialise behind the previous unmap — a hypothesis, testable by switching `run()`
-to a fresh buffer and re-measuring.
+to a fresh buffer and re-measuring. *(Tested below: the fresh buffer was **not**
+faster — the buffer is not it. The separate submit is part of it.)*
 
 **This does not overturn the 1.34× figure, but it does put it in doubt.** That
 figure was measured on stock Chrome 150 at the same 5 ms budget, with LiteRT's GPU
@@ -682,6 +693,62 @@ raw samples in
 [`…-litert-vs-webgpu.json`](docs/measurements/2026-08-24-stock-chrome-litert-vs-webgpu.json).
 These are the first figures in this repository taken with the fixed-count
 harness, so they may not be pooled with any number measured before 2026-08-24.
+
+### Traced: why LiteRT.js is faster
+
+The 2.03× was measured but unexplained. Tracing both paths stage by stage — LiteRT
+from the TypeScript in its shipped source map, the hand-written page by
+instrumenting its own `run()` — settles it. **The entire per-inference cost of
+both paths is one CPU↔GPU round-trip; the gap is how much of it each hides.**
+
+Every stage timed on the OnePlus, stock Chrome 150, fixed clocks, fused, mean of
+1000 inferences, median of 3:
+
+| Stage | ms | |
+| --- | ---: | --- |
+| enqueue only — submit compute, don't wait | **0.12** | the arithmetic is free |
+| compute + `onSubmittedWorkDone` (wait, no map) | 3.26 | the round-trip, without readback |
+| compute + copy + `mapAsync`, reused buffer — **current `run()`** | 3.25 | mapping adds nothing over waiting |
+| compute + copy + `mapAsync`, two submits + fresh buffer | 2.45 | splitting the submit already helps |
+| **pipelined — one inference kept in flight** | **0.48** | overlap the round-trip and it vanishes |
+
+LiteRT, probed the same way, matches at the ends: `model.run()` alone is **0.10 ms**
+(it only enqueues and returns — the sync is deferred to `data()`), an isolated
+readback is **3.52 ms**, and the full `run()` + `data()` loop `index.html` times is
+**1.70 ms**. Its input and output tensors are WebGPU buffers
+(`WEB_GPU_BUFFER_PACKED`), so it reads back over `mapAsync` exactly as the
+hand-written page does; it runs the **JSPI** wasm build.
+
+Three things fall out:
+
+- **It is not the arithmetic, the shader, the language or the buffer.** Enqueue is
+  0.12 ms; per-layer is not faster than fused; the W1
+  [coalescing](docs/measurements/2026-08-24-coalesce-w1-ab.md) changed nothing;
+  and a **fresh `MAP_READ` buffer per call was slightly *slower*** (3.45 vs
+  3.28 ms), which disproves the buffer-reuse hypothesis above.
+- **`onSubmittedWorkDone` ≈ `mapAsync`** (3.26 vs 3.34 ms). The ~3 ms is the cost
+  of *waiting for the GPU to answer*, not of mapping specifically. This is the
+  measurement the second experiment said it lacked.
+- **The lever is overlap.** LiteRT's `run()` returns without syncing, so compute
+  and readback are two submits and the GPU works while the CPU encodes — partial
+  overlap, landing at 1.70 ms. The hand-written `run()` fuses them into one submit
+  and then blocks idle on `mapAsync`, paying the full round-trip: 3.25 ms.
+  Restructured to keep one inference in flight, the hand-written page hits
+  **0.48 ms — faster than LiteRT**, because the round-trip is hidden entirely.
+
+> [!IMPORTANT]
+> **This is a throughput result, and the harness is a throughput test** — it times
+> `TIMING_RUNS` back-to-back inferences, where overlap is fair game and is exactly
+> what LiteRT exploits to beat a serial hand-written loop. But a user classifies
+> **once** per drawing, and a single inference cannot hide its own round-trip: the
+> true one-shot GPU latency is ~3.3 ms for *both*, which is what the "cold start"
+> line reports. So the 1.61-vs-3.27 table measures readback pipelining, not the GPU
+> computing faster — and none of it dents the thesis. The round-trip *is* the
+> per-call overhead that dwarfs the arithmetic, and the CPU at 0.09 ms beats every
+> GPU path, pipelined or not.
+
+Full trace and raw data:
+[`2026-08-24-litert-vs-handwritten-tracing.md`](docs/measurements/2026-08-24-litert-vs-handwritten-tracing.md).
 
 ### The CPU baseline, and how many runs a measurement needs
 
