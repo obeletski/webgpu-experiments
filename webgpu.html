@@ -800,16 +800,35 @@ fn main() {
         if (!built[next]) built[next] = next === 'fused' ? buildFused() : buildLayered();
       }
 
+      // A real macrotask boundary with near-zero latency, for the poll loop in
+      // run() below. setTimeout(0) clamps to >= 1 ms, which would put the poll
+      // cadence above the thing being polled.
+      const taskYield = () => new Promise((resolve) => {
+        const ch = new MessageChannel();
+        ch.port1.onmessage = () => resolve();
+        ch.port2.postMessage(0);
+      });
+
       // One inference: upload the input, record the mode's dispatch(es), and read
       // the 10 result floats back over mapAsync. The compute and the readback go
       // in two separate submits on purpose: the first submit lets the GPU start
-      // the dispatch while the CPU is still encoding the copy, so the compute
-      // overlaps the readback's setup instead of the whole thing running strictly
-      // in series. That is the overlap LiteRT gets for free by returning from its
-      // run() before syncing, and it takes fused from ~3.26 ms to ~2.4 ms without
-      // touching the arithmetic - the result stays bit-identical. The mapAsync
-      // await is still one full CPU<->GPU round-trip; a single self-contained
-      // run() cannot hide that, only the throughput pipeline can (README trace).
+      // the dispatch while the CPU is still encoding the copy - the overlap
+      // LiteRT gets for free by returning from its run() before syncing. That
+      // took fused from ~3.26 ms to ~2.7 ms.
+      //
+      // The remaining ~2.5 ms was not the round-trip either: left alone, Chrome
+      // resolves a pending mapAsync only when something makes the GPU process
+      // notice the work finished, and on Android that servicing is lazy. Asking
+      // for a fresh onSubmittedWorkDone signal from each later task forces the
+      // fence check, and the map resolves in ~0.4 ms - the compute itself was
+      // never the cost. The poke has to repeat from new tasks: a single call
+      // issued next to the submits rides the same flush and changes nothing
+      // (measured 2.6 ms), and poking with empty submits instead makes it ~9x
+      // WORSE (~24 ms) - a submit is heavyweight, a fence query is not. The
+      // loop only spins while the map is pending, a handful of iterations, and
+      // exits on device loss because mapAsync settles either way. The result
+      // stays bit-identical: mapAsync still cannot resolve before the copy
+      // completes, polling only changes when Chrome notices that it has.
       async function run(input) {
         device.queue.writeBuffer(buf.input, 0, input);
         const enc = device.createCommandEncoder();
@@ -824,7 +843,14 @@ fn main() {
         const enc2 = device.createCommandEncoder();
         enc2.copyBufferToBuffer(buf.result, 0, buf.read, 0, 40);
         device.queue.submit([enc2.finish()]);         // submit 2: readback copy
-        await buf.read.mapAsync(GPUMapMode.READ);
+        let mapDone = false;
+        const mapped = buf.read.mapAsync(GPUMapMode.READ);
+        mapped.then(() => { mapDone = true; }, () => { mapDone = true; });
+        while (!mapDone) {
+          device.queue.onSubmittedWorkDone().catch(() => {});
+          await taskYield();
+        }
+        await mapped;
         const out = new Float32Array(buf.read.getMappedRange().slice(0));
         buf.read.unmap();
         return out;

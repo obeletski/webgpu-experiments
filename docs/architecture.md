@@ -166,6 +166,10 @@ sequenceDiagram
     P->>G: copyBufferToBuffer(result to read, 40 bytes)
     P->>G: queue.submit (readback)
     P->>G: await read.mapAsync(READ)
+    loop while the map is pending
+        P->>G: onSubmittedWorkDone() from each fresh task
+        Note right of G: forces the fence check the map is waiting on
+    end
     G-->>P: 10 floats
     P->>G: read.unmap()
     Note right of P: two submits overlap the round-trip; one persistent MAP_READ buffer, reused
@@ -370,23 +374,29 @@ Of those two visible differences, the buffer is a red herring and the submit is
 the point. [Tracing both paths stage by stage](measurements/2026-08-24-litert-vs-handwritten-tracing.md)
 settles it: switching the hand-written `run()` to a fresh buffer per call was
 *slightly slower*, not faster, so buffer reuse is not the cause. What is left is
-one CPU↔GPU round-trip that costs **~3.3 ms** — the same whether you `mapAsync`
-the result or merely `onSubmittedWorkDone`-wait for it, because it is the *waiting*
-that costs, not the mapping. The hand-written `run()` fuses compute and readback
-into one submit and then blocks idle on it; LiteRT's `run()` returns without
-syncing, making compute and readback two submits that overlap. Keep one inference
-in flight in the hand-written page and its cost falls to **0.48 ms**, beating
-LiteRT — the round-trip was never the shader's or the buffer's, it was the
-serial *wait*, and it hides under pipelining. (This is a throughput result; a
-single classification still pays the round-trip once, which is the "cold start"
-line, and even pipelined the GPU stays above the CPU's 0.09 ms.)
+one wait that costs **~3.3 ms** — the same whether you `mapAsync` the result or
+merely `onSubmittedWorkDone`-wait for it, because it is the *waiting* that costs,
+not the mapping. The hand-written `run()` fuses compute and readback into one
+submit and then blocks idle on it; LiteRT's `run()` returns without syncing,
+making compute and readback two submits that overlap. Keep one inference in
+flight in the hand-written page and its cost falls to **0.48 ms**, beating
+LiteRT.
 
-That fix has since landed: `run()` now issues the compute and the readback as two
-separate submits, which measured **~2.75 ms** fused in one session, down from
-~3.26 ([data](measurements/2026-08-24-webgpu-two-submit.md)). It stops short of
-LiteRT's 1.6 ms — the full round-trip pipeline would return a one-behind result,
-correct only for a constant-input loop — but it captures the overlap a single,
-self-contained `run()` can honestly take.
+Two fixes have since landed in `run()`, and the second reframes the wait itself.
+The compute and the readback became two separate submits (**~2.75 ms** fused,
+[data](measurements/2026-08-24-webgpu-two-submit.md)) — and then the rest of the
+wait turned out to be **Chrome's lazy fence servicing, not a round-trip**:
+left alone, the GPU process takes ~2.5 ms to notice that microseconds of work
+have finished. Polling `onSubmittedWorkDone` from each fresh task while the
+`mapAsync` is pending forces the check, and the page lands at **~0.38 ms fused /
+~0.41 ms per-layer**, past LiteRT's 1.61 ms by ~4×, bit-identical output, each
+call still waiting for its own result
+([data](measurements/2026-08-24-webgpu-mapasync-poll.md)). The one-behind
+pipeline (the 0.48 ms) remains deliberately out of the page — the poll is not
+pipelining; it accelerates a single one-shot classification the same way. The
+CPU's margin over the best GPU path narrows from 17.9× to ~4× and the thesis
+holds either way.
 
 Reading an architecture predicts what it must *carry*. It does not predict what
-it must *wait for* — nor that the wait is the entire bill.
+it must *wait for* — nor that most of the wait was nobody checking whether the
+waiting was over.

@@ -74,14 +74,22 @@ harness at a run count high enough that the median has stopped moving** — see
 does not help: it is 2.03× slower than the runtime it was written to beat.
 
 > [!NOTE]
-> The **3.270 ms** direct-WebGPU figure predates a fix. After
+> The **3.270 ms** direct-WebGPU figure predates two fixes, and the second one
+> reverses the sentence above. After
 > [tracing why LiteRT is faster](#traced-why-litertjs-is-faster), `webgpu.html`'s
 > `run()` was changed to issue the compute and the readback as two separate
-> submits, which overlaps the round-trip and measured **~2.75 ms** fused in a
-> single session ([data](docs/measurements/2026-08-24-webgpu-two-submit.md)).
-> The table keeps the rigorously-sampled 3.270 ms until that improvement is
-> re-measured with the full 3-session fixed-count protocol; the ratio above will
-> shrink from 2.03× when it is.
+> submits (**~2.75 ms** fused,
+> [data](docs/measurements/2026-08-24-webgpu-two-submit.md)) — and then the
+> remaining gap turned out not to be the round-trip at all but **Chrome's lazy
+> fence servicing**: polling `onSubmittedWorkDone` while the `mapAsync` is
+> pending measured fused at **~0.38 ms** and per-layer at **~0.41 ms** across two
+> sessions, past LiteRT by ~4×
+> ([data](docs/measurements/2026-08-24-webgpu-mapasync-poll.md)). Output stays
+> bit-identical; nothing is pipelined — each call still waits for its own result.
+> The table keeps the rigorously-sampled 3.270 ms until the fix is re-measured
+> from the Pages site with the full 3-session protocol; when it is, the
+> hand-written page becomes the fastest GPU path and the CPU's margin over the
+> GPU narrows from 17.9× to ~4×.
 
 Raw data:
 [CPU baseline and run-count sweep](docs/measurements/2026-08-24-stock-chrome-cpu-baseline.md)
@@ -555,10 +563,12 @@ Ranking it would need one more measurement: the same dispatch awaiting
 [That measurement has since been done](#traced-why-litertjs-is-faster):
 `onSubmittedWorkDone` costs **3.26 ms**, statistically the same as `mapAsync`'s
 3.34 ms — so the residual is not readback *versus* submit at all, it is the single
-CPU↔GPU round-trip both share, and the sole way to shrink it is to stop waiting on
-it serially. What is established is that the residual exists, is ~3 ms, and is
-untouched by shader tuning — it is WebGPU's floor for a *synchronous*
-request-response inference, and falls only when the round-trip is overlapped.
+wait both share. [A later session went further](#the-round-trip-that-wasnt-chromes-lazy-fence):
+most of that wait is not the GPU or the wire but **Chrome's lazy fence
+servicing**, and polling `onSubmittedWorkDone` while the map is pending collapses
+it to ~0.4 ms. What is established is that the residual exists, is untouched by
+shader tuning, and belongs entirely to the machinery of asking and being told —
+never to the arithmetic.
 
 So the original claim holds in its essentials, quantified: **per-call overhead
 dominates, dispatch is minor, and arithmetic is irrelevant.** The original wording
@@ -754,19 +764,47 @@ one-inference-in-flight pipeline (the 0.48 ms) is deliberately *not* in the page
 it returns a one-behind result, correct only in a constant-input timing loop, not
 for a single real classification.
 
+### The round-trip that wasn't: Chrome's lazy fence
+
+The trace read the pipelined 0.48 ms as proof that overlap hides the round-trip.
+It proves something stronger: **submits arriving while a map is pending make it
+resolve almost immediately**, which a physical round-trip cannot do — but a
+lazily-polled fence does. Left alone, Android Chrome takes ~2.5 ms to *notice*
+that work finishing in microseconds has finished; the pending `mapAsync` resolves
+only when the GPU process gets around to checking the fence.
+
+So the follow-up probed what forces that check
+([data](docs/measurements/2026-08-24-webgpu-mapasync-poll.md)). Asking for a
+fresh `onSubmittedWorkDone()` signal from each new macrotask while the map is
+pending drops the two-submit `run()` from **2.7 to ~0.4 ms** — each call still
+submits, waits for *its own* result, and returns bit-identical floats; only the
+noticing is faster. The shape of the poke is everything: a single
+`onSubmittedWorkDone` issued next to the submits rides the same flush and changes
+nothing (2.60 ms); polling with **empty submits** instead is 9× *worse* (24.5 ms —
+a submit is heavyweight, a fence query is not); task churn without GPU pokes also
+makes things worse (5.9 ms). With the poll in the page, fused measured **0.38 ms**
+and per-layer **0.41 ms** (medians of 5 × 1000 runs, two sessions, localhost
+protocol) against 2.72 / 2.81 for the two-submit build served next to it — past
+LiteRT's 1.61 ms by ~4×, with the fused-vs-per-layer dispatch delta preserved at
+~0.03 ms. The samples spread wider than before (0.33–0.76 ms): the poll's latency
+rides on task scheduling, so the tail is fatter even though the medians repeat.
+
 > [!IMPORTANT]
-> **This is a throughput result, and the harness is a throughput test** — it times
-> `TIMING_RUNS` back-to-back inferences, where overlap is fair game and is exactly
-> what LiteRT exploits to beat a serial hand-written loop. But a user classifies
-> **once** per drawing, and a single inference cannot hide its own round-trip: the
-> true one-shot GPU latency is ~3.3 ms for *both*, which is what the "cold start"
-> line reports. So the 1.61-vs-3.27 table measures readback pipelining, not the GPU
-> computing faster — and none of it dents the thesis. The round-trip *is* the
-> per-call overhead that dwarfs the arithmetic, and the CPU at 0.09 ms beats every
-> GPU path, pipelined or not.
+> The trace's own summary needs two corrections in light of this. First, the
+> harness is a throughput test and LiteRT's advantage was pipelining — that part
+> stands — but the claim that a single one-shot inference must pay ~3.3 ms does
+> **not**: the poll is not pipelining, it accelerates every call individually,
+> one-shot included. The ~3.3 ms `onSubmittedWorkDone` ≈ `mapAsync` measurement
+> was real but was measuring **Chrome's fence-servicing schedule, not the
+> round-trip**; the irreducible submit + compute + copy + notice cost on this
+> device is ~0.4 ms. Second, the thesis narrows but holds: the CPU at 0.090 ms
+> still beats the best GPU path — now by ~4× rather than 17.9×. Per-call GPU
+> overhead still dwarfs the arithmetic; there is simply less of it than Chrome
+> was charging.
 
 Full trace and raw data:
-[`2026-08-24-litert-vs-handwritten-tracing.md`](docs/measurements/2026-08-24-litert-vs-handwritten-tracing.md).
+[`2026-08-24-litert-vs-handwritten-tracing.md`](docs/measurements/2026-08-24-litert-vs-handwritten-tracing.md),
+[`2026-08-24-webgpu-mapasync-poll.md`](docs/measurements/2026-08-24-webgpu-mapasync-poll.md).
 
 ### The CPU baseline, and how many runs a measurement needs
 
