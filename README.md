@@ -14,15 +14,13 @@ Draw a digit, classify it, then flip the backend and run the same drawing throug
 the other one. Every figure the UI shows — compile, cold start, steady state — is
 part of the comparison.
 
-**Result: the CPU wins on every device tested**, by 7.7× against a real mobile
-GPU. A [second experiment](#second-experiment-direct-webgpu) rewrote the same
-inference directly against the WebGPU API to find out why: a dispatch costs well
-under a millisecond, and **~3 ms of per-call overhead remains that no amount of
-tuning removes**. The CPU stays 5.7× ahead of the best GPU path. That experiment
-also reported that removing LiteRT.js bought 1.34× — **which turned out to be an
-under-sampling artefact.** Properly sampled, LiteRT.js is
-[1.93× *faster*](#settled-litertjs-is-faster-than-the-hand-written-page) than the
-hand-written page on the same browser.
+**Result: the CPU wins on every device tested**, by **17.9×** against a real
+mobile GPU. A [second experiment](#second-experiment-direct-webgpu) rewrote the
+same inference directly against the WebGPU API to find out why: a dispatch costs
+well under a millisecond, and **~3 ms of per-call overhead remains that no amount
+of tuning removes**. That experiment also reported that removing LiteRT.js bought
+1.34× — **which turned out to be an under-sampling artefact.** Properly sampled,
+LiteRT.js is *faster* than the hand-written page, by 2.03×.
 
 A [third experiment](#third-experiment-a-model-built-into-the-browser) removed
 JavaScript from the question altogether, putting the model *inside* a custom
@@ -53,7 +51,43 @@ See the [performance report](#performance-report) for the numbers, the
 [finding](#finding-the-gpu-is-slower-than-the-cpu) for why, and
 [the experiment](#the-experiment) for how they were measured.
 
+## Current numbers
+
+**OnePlus CPH2653**, **stock Chrome 150.0.7871.188**, content served from the
+Pages site over HTTPS, clocks fixed, Chrome force-stopped between pages, 3
+sessions × 5 samples each. Every figure below is taken with the **fixed-count
+harness at a run count high enough that the median has stopped moving** — see
+[how many runs a measurement needs](#the-cpu-baseline-and-how-many-runs-a-measurement-needs).
+
+| Implementation | Page | Median | CV | vs CPU |
+| --- | --- | ---: | ---: | ---: |
+| **LiteRT.js — CPU (`wasm`)** | `index.html` | **0.090 ms** | **0.0%** | 1.00× |
+| LiteRT.js — GPU (`webgpu`) | `index.html` | **1.610 ms** | 2.1% | **17.9×** |
+| Direct WebGPU — fused | `webgpu.html` | **3.270 ms** | 1.9% | **36.3×** |
+
+**The CPU is 17.9× faster than the best GPU path.** Hand-writing the WebGPU path
+does not help: it is 2.03× slower than the runtime it was written to beat.
+
+Raw data:
+[CPU baseline and run-count sweep](docs/measurements/2026-08-24-stock-chrome-cpu-baseline.md)
+·
+[LiteRT vs direct WebGPU](docs/measurements/2026-08-24-stock-chrome-litert-vs-webgpu.md).
+
+> [!NOTE]
+> Everything below this section was measured with the **older, budget-driven
+> harness**, most of it at a 5 ms budget where the GPU rows carried CVs of
+> 45–55%. Those sections are kept as measured — they carry the reasoning that
+> produced the findings — but where a number there disagrees with the table
+> above, **the table above is the current one.** Figures from the two harnesses
+> must not be pooled.
+
 ## Performance report
+
+> [!WARNING]
+> **Superseded.** These are old-harness figures, kept for the reasoning and the
+> DVFS method they document. The CPU row in particular is biased: at the budget
+> used here the CPU path was sampled over too short a burst to reach its clock.
+> Current figures are in [Current numbers](#current-numbers).
 
 Measured on a **OnePlus CPH2653** (Android 16, real GPU) running **stock Chrome
 150.0.7871.188**, with the device held at a fixed clock — see
@@ -630,6 +664,11 @@ fixed clocks, Chrome force-stopped between pages, 3 sessions × 5 samples per pa
 sample (1.91 ms) is below the hand-written page's fastest (2.80 ms); U = 225 of
 225, permutation two-sided p = 0.00004. The margin is *wider* than the 1.73×
 measured on custom Chromium 153, so the effect is not specific to that build.
+
+Both pages were later re-measured at 1000 runs per sample, where both are firmly
+on their plateaus — LiteRT **1.610 ms** (CV 2.1%) against direct WebGPU **3.270
+ms** (CV 1.9%), a ratio of **2.03×**. The 100-run figures moved by +0.6% and
++0.9% respectively, so nothing here depended on the count.
 
 So the second experiment's headline claim is reversed: **removing LiteRT.js does
 not buy 1.34×, it costs 1.93×.** The runtime this page was written to beat is

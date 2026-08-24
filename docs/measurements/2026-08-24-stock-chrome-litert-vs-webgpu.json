@@ -290,6 +290,144 @@
       "distributions_overlap": false,
       "permutation_two_sided_p": 4e-05,
       "permutation_resamples": 200000
+    },
+    "settled_counts": {
+      "litert_gpu_ms": 1.61,
+      "direct_webgpu_ms": 3.27,
+      "ratio_direct_over_litert": 2.031,
+      "cpu_ms": 0.09,
+      "gpu_over_cpu": 17.9
+    }
+  },
+  "followup_1000_runs": {
+    "note": "webgpu.html fused re-measured with ?timing_runs=1000 in a later session block",
+    "timing_runs": 1000,
+    "sessions": 3,
+    "sessions_raw": [
+      {
+        "rep": 1,
+        "url": "https://obeletski.github.io/webgpu-experiments/webgpu.html?timing_runs=1000",
+        "info": "pipeline <1 ms cold start 6.10 ms",
+        "warmup_classifications": 3,
+        "samples": [
+          {
+            "digit": 1,
+            "ms": 3.28,
+            "path": "fused",
+            "runs": 1000
+          },
+          {
+            "digit": 1,
+            "ms": 3.18,
+            "path": "fused",
+            "runs": 1000
+          },
+          {
+            "digit": 1,
+            "ms": 3.3,
+            "path": "fused",
+            "runs": 1000
+          },
+          {
+            "digit": 1,
+            "ms": 3.26,
+            "path": "fused",
+            "runs": 1000
+          },
+          {
+            "digit": 1,
+            "ms": 3.34,
+            "path": "fused",
+            "runs": 1000
+          }
+        ]
+      },
+      {
+        "rep": 2,
+        "url": "https://obeletski.github.io/webgpu-experiments/webgpu.html?timing_runs=1000",
+        "info": "pipeline <1 ms cold start 7.50 ms",
+        "warmup_classifications": 3,
+        "samples": [
+          {
+            "digit": 1,
+            "ms": 3.27,
+            "path": "fused",
+            "runs": 1000
+          },
+          {
+            "digit": 1,
+            "ms": 3.23,
+            "path": "fused",
+            "runs": 1000
+          },
+          {
+            "digit": 1,
+            "ms": 3.25,
+            "path": "fused",
+            "runs": 1000
+          },
+          {
+            "digit": 1,
+            "ms": 3.16,
+            "path": "fused",
+            "runs": 1000
+          },
+          {
+            "digit": 1,
+            "ms": 3.33,
+            "path": "fused",
+            "runs": 1000
+          }
+        ]
+      },
+      {
+        "rep": 3,
+        "url": "https://obeletski.github.io/webgpu-experiments/webgpu.html?timing_runs=1000",
+        "info": "pipeline <1 ms cold start 97.90 ms",
+        "warmup_classifications": 3,
+        "samples": [
+          {
+            "digit": 1,
+            "ms": 3.33,
+            "path": "fused",
+            "runs": 1000
+          },
+          {
+            "digit": 1,
+            "ms": 3.29,
+            "path": "fused",
+            "runs": 1000
+          },
+          {
+            "digit": 1,
+            "ms": 3.19,
+            "path": "fused",
+            "runs": 1000
+          },
+          {
+            "digit": 1,
+            "ms": 3.17,
+            "path": "fused",
+            "runs": 1000
+          },
+          {
+            "digit": 1,
+            "ms": 3.31,
+            "path": "fused",
+            "runs": 1000
+          }
+        ]
+      }
+    ],
+    "derived": {
+      "n": 15,
+      "median_ms": 3.27,
+      "mean_ms": 3.2593,
+      "sd_ms": 0.061,
+      "cv_pct": 1.87,
+      "min_ms": 3.16,
+      "max_ms": 3.34,
+      "shift_from_100_runs_pct": 0.93
     }
   }
 }

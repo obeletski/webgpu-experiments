@@ -70,6 +70,28 @@ ordering is unambiguous.
 of every GPU path; what changes is the ranking *within* the GPU paths. The
 hand-written page is not faster than the runtime it was written to beat.
 
+## Confirmed at 1000 runs
+
+Both pages were re-measured in a later session block with `?timing_runs=1000`,
+after the [run-count sweep](2026-08-24-stock-chrome-cpu-baseline.md) showed the
+default of 100 is too few for the CPU. Both GPU paths were already on their
+plateaus:
+
+| Implementation | 100 runs | 1000 runs | Shift | CV at 1000 |
+| --- | ---: | ---: | ---: | ---: |
+| LiteRT.js — GPU (webgpu) | 1.68 ms | **1.610 ms** | −0.6%¹ | **2.1%** |
+| Direct WebGPU — fused | 3.24 ms | **3.270 ms** | **+0.9%** | **1.9%** |
+
+¹ Against the 1.600 ms measured for this path in the same block as its 1000-run
+figure; the 1.68 ms above is from this session block, and the ~5% between-block
+difference is drift, not count.
+
+At settled counts the ratio is **2.03×**, slightly wider than the 1.93× measured
+at 100 runs. The conclusion is unchanged and does not depend on the run count.
+
+`webgpu.html` fused at 1000 runs, 15 samples: median 3.270, mean 3.259, SD 0.0610,
+range 3.16 – 3.34, session medians 3.280 / 3.250 / 3.290.
+
 ## Method
 
 Per the README's [protocol](../../README.md#getting-numbers-that-reproduce):
@@ -110,6 +132,8 @@ scratch file and is not committed.
   re-running `index.html` on its CPU backend under the same harness.
 - **`webgpu.html`'s per-layer mode was not measured** — only fused, which is the
   faster of the two.
+- **No CPU baseline in this block.** It was taken separately; see
+  [the CPU baseline](2026-08-24-stock-chrome-cpu-baseline.md).
 - **Why LiteRT.js is faster remains unexplained.** The
   [hypothesis](../../README.md#re-measured-the-ordering-really-does-invert) about
   per-readback buffer allocation is still untested; this measurement only

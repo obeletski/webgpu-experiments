@@ -102,7 +102,7 @@ are listed only for completeness.
   GPU path, which is a poor interactive page. This measurement establishes the
   number to use for the CPU; it does not decide the default.
 - **Whether other devices ramp the same way.** One device, one browser.
-- **`webgpu.html` was not re-measured here**, so the 3.24 ms direct-WebGPU figure
-  in the companion file is still a 100-run number. It is a GPU path, and the GPU
-  was shown to be on its plateau at 100, so it is very likely sound — but it was
-  not checked directly.
+- ~~`webgpu.html` was not re-measured here.~~ **Now checked**: at 1000 runs it
+  gives 3.270 ms (CV 1.9%) against 3.24 ms at 100 — a shift of +0.9%, confirming
+  it was on its plateau. See the
+  [companion file](2026-08-24-stock-chrome-litert-vs-webgpu.md#confirmed-at-1000-runs).
