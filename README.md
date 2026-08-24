@@ -802,6 +802,12 @@ for a single real classification.
 
 ### The round-trip that wasn't: Chrome's lazy fence
 
+*A **fence** is how the CPU learns the GPU has finished: a counter the GPU bumps
+the instant a submission completes, which Chrome's GPU process must check before
+the page's `mapAsync` readback — the call that makes a GPU buffer readable in
+JavaScript — can resolve. The finding is that the fence was signalled on time but
+checked late.*
+
 The trace read the pipelined 0.48 ms as proof that overlap hides the round-trip.
 It proves something stronger: **submits arriving while a map is pending make it
 resolve almost immediately**, which a physical round-trip cannot do — but a

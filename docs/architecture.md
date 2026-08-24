@@ -410,6 +410,16 @@ where it went, and how it came back. §1's stacks predicted the runtime *layers*
 were the cost; these show the cost was one thing none of those layers contained:
 whether anyone was asking the GPU process if the work had finished.
 
+**Two terms this section leans on.** The CPU and GPU run in parallel — a `submit`
+hands work to the GPU and returns immediately, without waiting. A **fence** is how
+the CPU later learns the GPU has finished: a counter the GPU bumps ("signals") the
+instant it completes a submission, which the CPU — here, Chrome's GPU process —
+checks to know the results are ready and safe to read. **`mapAsync`** is how the
+page reads a GPU buffer back into JavaScript; its promise resolves only once the
+GPU has finished writing that buffer, which is gated on exactly that fence. So
+every "wait" below is a `mapAsync` waiting on a fence — and the finding is that on
+Android the fence was *signalled* on time but *checked* late.
+
 ### 7.1 Why the direct-GPU path was slow
 
 The dispatch is 0.605 MFLOP — microseconds of arithmetic. The readback is 40
