@@ -73,6 +73,16 @@ harness at a run count high enough that the median has stopped moving** — see
 **The CPU is 17.9× faster than the best GPU path.** Hand-writing the WebGPU path
 does not help: it is 2.03× slower than the runtime it was written to beat.
 
+> [!NOTE]
+> The **3.270 ms** direct-WebGPU figure predates a fix. After
+> [tracing why LiteRT is faster](#traced-why-litertjs-is-faster), `webgpu.html`'s
+> `run()` was changed to issue the compute and the readback as two separate
+> submits, which overlaps the round-trip and measured **~2.75 ms** fused in a
+> single session ([data](docs/measurements/2026-08-24-webgpu-two-submit.md)).
+> The table keeps the rigorously-sampled 3.270 ms until that improvement is
+> re-measured with the full 3-session fixed-count protocol; the ratio above will
+> shrink from 2.03× when it is.
+
 Raw data:
 [CPU baseline and run-count sweep](docs/measurements/2026-08-24-stock-chrome-cpu-baseline.md)
 ·
@@ -735,6 +745,14 @@ Three things fall out:
   and then blocks idle on `mapAsync`, paying the full round-trip: 3.25 ms.
   Restructured to keep one inference in flight, the hand-written page hits
   **0.48 ms — faster than LiteRT**, because the round-trip is hidden entirely.
+
+`webgpu.html` has since adopted the correctness-preserving half of this: its
+`run()` now issues the compute and the readback as **two separate submits**, which
+measured **~2.75 ms** fused in one session, down from ~3.26
+([data](docs/measurements/2026-08-24-webgpu-two-submit.md)). The full
+one-inference-in-flight pipeline (the 0.48 ms) is deliberately *not* in the page —
+it returns a one-behind result, correct only in a constant-input timing loop, not
+for a single real classification.
 
 > [!IMPORTANT]
 > **This is a throughput result, and the harness is a throughput test** — it times

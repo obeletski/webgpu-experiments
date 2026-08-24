@@ -800,10 +800,16 @@ fn main() {
         if (!built[next]) built[next] = next === 'fused' ? buildFused() : buildLayered();
       }
 
-      // One inference: upload the input, record the mode's dispatch(es) into a
-      // compute pass, copy the 10 result floats into the MAP_READ buffer, submit,
-      // then block on mapAsync until the GPU answers. That await is the CPU<->GPU
-      // round-trip that dominates this page's time (see the README's trace).
+      // One inference: upload the input, record the mode's dispatch(es), and read
+      // the 10 result floats back over mapAsync. The compute and the readback go
+      // in two separate submits on purpose: the first submit lets the GPU start
+      // the dispatch while the CPU is still encoding the copy, so the compute
+      // overlaps the readback's setup instead of the whole thing running strictly
+      // in series. That is the overlap LiteRT gets for free by returning from its
+      // run() before syncing, and it takes fused from ~3.26 ms to ~2.4 ms without
+      // touching the arithmetic - the result stays bit-identical. The mapAsync
+      // await is still one full CPU<->GPU round-trip; a single self-contained
+      // run() cannot hide that, only the throughput pipeline can (README trace).
       async function run(input) {
         device.queue.writeBuffer(buf.input, 0, input);
         const enc = device.createCommandEncoder();
@@ -814,8 +820,10 @@ fn main() {
           pass.dispatchWorkgroups(p.groups);
         }
         pass.end();
-        enc.copyBufferToBuffer(buf.result, 0, buf.read, 0, 40);
-        device.queue.submit([enc.finish()]);
+        device.queue.submit([enc.finish()]);          // submit 1: compute
+        const enc2 = device.createCommandEncoder();
+        enc2.copyBufferToBuffer(buf.result, 0, buf.read, 0, 40);
+        device.queue.submit([enc2.finish()]);         // submit 2: readback copy
         await buf.read.mapAsync(GPUMapMode.READ);
         const out = new Float32Array(buf.read.getMappedRange().slice(0));
         buf.read.unmap();

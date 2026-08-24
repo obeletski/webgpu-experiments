@@ -161,12 +161,14 @@ sequenceDiagram
     P->>G: setPipeline, setBindGroup
     P->>G: dispatchWorkgroups(1) at workgroup_size 128
     Note right of G: hidden layer never leaves var workgroup
+    P->>G: queue.submit (compute)
+    Note right of G: GPU starts while the CPU encodes the copy
     P->>G: copyBufferToBuffer(result to read, 40 bytes)
-    P->>G: queue.submit
+    P->>G: queue.submit (readback)
     P->>G: await read.mapAsync(READ)
     G-->>P: 10 floats
     P->>G: read.unmap()
-    Note right of P: one persistent MAP_READ buffer, reused
+    Note right of P: two submits overlap the round-trip; one persistent MAP_READ buffer, reused
 ```
 
 ```mermaid
@@ -378,6 +380,13 @@ LiteRT — the round-trip was never the shader's or the buffer's, it was the
 serial *wait*, and it hides under pipelining. (This is a throughput result; a
 single classification still pays the round-trip once, which is the "cold start"
 line, and even pipelined the GPU stays above the CPU's 0.09 ms.)
+
+That fix has since landed: `run()` now issues the compute and the readback as two
+separate submits, which measured **~2.75 ms** fused in one session, down from
+~3.26 ([data](measurements/2026-08-24-webgpu-two-submit.md)). It stops short of
+LiteRT's 1.6 ms — the full round-trip pipeline would return a one-behind result,
+correct only for a constant-input loop — but it captures the overlap a single,
+self-contained `run()` can honestly take.
 
 Reading an architecture predicts what it must *carry*. It does not predict what
 it must *wait for* — nor that the wait is the entire bill.
