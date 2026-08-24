@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Guidance for Claude Code (claude.ai/code) working in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## What this is
 
@@ -15,20 +15,78 @@ small (~0.6 MFLOP), because per-call GPU overhead dwarfs the arithmetic.
 | `webgpu.html` | the `.tflite` parsed in JS, hand-written WGSL, fused vs per-layer |
 | `browser-model-api.html` | `navigator.digitclassifier`, a Web API in a custom Chromium build |
 
-Static site, no build step. `node serve.js` → <http://localhost:8080>. A server
-is required: from `file://` the page sits on the opaque null origin and can
-fetch neither the ES module nor the model.
+**The README is the deliverable.** It carries the findings, the tables and the
+reasoning; the pages only produce the numbers. A measurement that changes a
+conclusion has to change the README too, and its raw data has to land in
+`docs/measurements/`.
+
+## Commands
+
+```sh
+npm install    # optional: fetches @litertjs/core so index.html uses local files
+npm start      # = node serve.js → http://localhost:8080
+```
+
+There is **no build step, no bundler, no test suite and no linter** — do not go
+looking for them. Verification is manual: serve the site, draw a digit, classify.
+A server is required: from `file://` the page sits on the opaque null origin and
+can fetch neither the ES module nor the model. Without `npm install` the import
+map's local paths 404 and `index.html` falls back to the `esm.run` / jsDelivr
+CDN — which is exactly what happens on GitHub Pages, since `node_modules` is
+gitignored.
 
 Published by GitHub Pages from `main` at
 <https://obeletski.github.io/webgpu-experiments/>. **Pushing to `main` publishes.**
 
+## Architecture
+
+Each page is a **single self-contained HTML file** — CSS in one `<style>`, all
+logic in one inline `<script>`. There are no shared modules and no imports
+between pages; `index.html` is the only one that imports anything at all
+(LiteRT.js, via an import map with a CDN fallback). `serve.js` is a
+zero-dependency static file server and is not part of the benchmark.
+
+Every page has the same five stages, in this order:
+
+1. **Draw** — pointer events (mouse/touch/stylus in one path) on a 280×280 canvas.
+2. **Preprocess** — bounding box → fit to 20×20 → centre of mass at (14,14) →
+   28×28, filled black *before* `drawImage`, grayscale, normalized to `[0,1]`,
+   replicated across 3 channels.
+3. **Infer** — the one part that differs per page.
+4. **Time** — repeat the inference until `TIMING_MIN_MS` accumulates (capped by
+   `TIMING_MAX_RUNS`), after one untimed warm-up run that is discarded; report
+   the mean *and the run count*.
+5. **Report** — argmax over 10 probabilities.
+
+Stages 1, 2, 4 and 5 are **byte-identical copies** across the three files. That
+duplication is the design (see the rules below).
+
+**The model contract**, shared by all three: input `[1,28,28,3]` float32 — 2352
+values, *not* the 784 grayscale ones MNIST examples usually assume — output
+`[1,10]` float32, **already softmaxed**. Layers are `2352 → 128` (ReLU) `→ 10`.
+`index.html` reads the shape from `getInputDetails()` rather than hard-coding it.
+
+Page-specific:
+
+- `index.html` — lazily acquires one `GPUDevice` and reuses it; a backend switch
+  recompiles from the model bytes fetched at startup and never touches the
+  network; a failed switch falls back to the previously working backend.
+- `webgpu.html` — a ~90-line hand-rolled flatbuffer reader pulls the weights out
+  of `digit_classifier.tflite` in the browser, then runs them two ways: **fused**
+  (one `dispatchWorkgroups(1)` at `@workgroup_size(128)`, hidden layer stays in
+  `var<workgroup>`) and **per-layer** (three dispatches through storage buffers,
+  how a general runtime must work). The difference between the two *is* the
+  measurement of dispatch cost.
+- `browser-model-api.html` — fetches nothing at all; hands 2352 floats to C++
+  inside Blink. Detects which of {build, flag, secure context} is missing and
+  says so rather than failing silently.
+
 ## Rules that protect the comparison
 
 - **The drawing code and the MNIST preprocessing are duplicated across all three
-  pages on purpose.** Bounding box → fit to 20×20 → centre of mass at (14,14) →
-  NHWC ×3 channels. The pages are only comparable while those are byte-identical.
-  Do **not** factor them into a shared module, and if you change one, change all
-  three. The same goes for the timing harness.
+  pages on purpose.** The pages are only comparable while those are
+  byte-identical. Do **not** factor them into a shared module, and if you change
+  one, change all three. The same goes for the timing harness.
 - **Never put stock-Chrome and custom-Chromium figures in one table.** Two
   browsers are involved (below) and they are three milestones apart.
 - **Label every measurement with its browser, device and protocol.** Raw data
@@ -80,6 +138,17 @@ before 2026-08-24 was taken at 5 ms and carries that defect.
 
 Fixed-performance mode **only fixes the CPU**; GPU noise is under-sampling, not
 DVFS.
+
+The driver page and POST collector the README describes (`adb reverse
+tcp:8099 tcp:8099`) are **scratch files, deliberately not committed** — rebuilt
+per experiment. The README documents the method, not a script to run.
+
+## Where things live
+
+- `docs/measurements/` — raw data behind every published number, one file per
+  measurement session, each stating device, browser and protocol.
+- `docs/superpowers/specs/`, `docs/superpowers/plans/` — the design spec and
+  implementation plan for the direct-WebGPU experiment.
 
 ## Conventions
 
