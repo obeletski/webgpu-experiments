@@ -1006,6 +1006,7 @@ cross-origin isolated — `serve.js` does not send the required
 | `webgpu.html` | Second experiment: the same model driven directly against the WebGPU API |
 | `browser-model-api.html` | Third experiment: the same model behind `navigator.digitclassifier`, a browser-built-in API |
 | `screenshot.png` | The image at the top, captured on the Android device |
+| `docs/architecture.md` | [How the three APIs are used](docs/architecture.md), with diagrams — and what the architecture predicts against what the device measured |
 | `docs/superpowers/specs/` | Design spec for the direct-WebGPU experiment |
 | `docs/superpowers/plans/` | Its implementation plan |
 | `docs/measurements/` | Raw measurement data behind the reported numbers, including the [three-way comparison](docs/measurements/2026-08-23-custom-chromium-three-way.md), the [stock-Chrome re-measurement](docs/measurements/2026-08-24-stock-chrome-litert-vs-webgpu.md) that reverses the 1.34×, the [CPU baseline and run-count sweep](docs/measurements/2026-08-24-stock-chrome-cpu-baseline.md), and the [harness verification](docs/measurements/2026-08-24-fixed-count-harness-verification.md) |
