@@ -143,7 +143,10 @@ count samples every path identically.
 **Every figure in this README predates that change** and was taken under the
 budget-driven harness. The 50 ms
 [re-measurement](#re-measured-the-ordering-really-does-invert) is the closest
-like-for-like comparison, and it covers the custom build only.
+like-for-like comparison, and it covers the custom build only. The fixed-count
+harness has so far only been
+[verified to run](docs/measurements/2026-08-24-fixed-count-harness-verification.md),
+on desktop software rendering — it has produced no figures worth reporting.
 
 For comparison, desktop headless Chrome with a **SwiftShader software** GPU gave
 CPU 0.14 ms against GPU ~4.4 ms. Treat that GPU column as a lower bound on GPU
@@ -887,7 +890,7 @@ cross-origin isolated — `serve.js` does not send the required
 | `screenshot.png` | The image at the top, captured on the Android device |
 | `docs/superpowers/specs/` | Design spec for the direct-WebGPU experiment |
 | `docs/superpowers/plans/` | Its implementation plan |
-| `docs/measurements/` | Raw measurement data behind the reported numbers, including the [three-way comparison](docs/measurements/2026-08-23-custom-chromium-three-way.md) |
+| `docs/measurements/` | Raw measurement data behind the reported numbers, including the [three-way comparison](docs/measurements/2026-08-23-custom-chromium-three-way.md) and the [harness verification](docs/measurements/2026-08-24-fixed-count-harness-verification.md) |
 | `LICENSE` | Apache-2.0 |
 | `CLAUDE.md` | Guidance for Claude Code: the rules that keep the three pages comparable |
 | `.nojekyll` | Stops GitHub Pages running the site through Jekyll |
