@@ -486,7 +486,11 @@ below.)*
 That is the second experiment's residual, arrived at from a direction that shares
 none of its machinery. Whatever the ~3 ms is — command submission, queue latency,
 the `mapAsync` readback round trip — **it is not the page, the language or the
-runtime**, because removing all three does not move it.
+runtime**, because removing all three does not move it. *(It does move it, later:
+once the fence poll became switchable, an unpolled JavaScript page measured
+2.44 ms against the C++ path's 3.71 on the same build. Removing JavaScript made it
+**worse**, which no reading of this paragraph anticipated — see
+[the four cases](#the-four-cases-and-what-the-floor-actually-is).)*
 
 **One caveat on the ordering.** LiteRT's WebGPU backend is the *fastest* GPU path
 here, which is the opposite of the second experiment's finding that removing the
@@ -567,6 +571,76 @@ GPU path.
 These are fixed-count figures on the custom build and **must not be pooled** with
 the budget-harness numbers above, nor with any stock-Chrome table. Full data:
 [`2026-08-25-custom-chromium-four-way.md`](measurements/2026-08-25-custom-chromium-four-way.md).
+
+> [!IMPORTANT]
+> **"Pinned to the lazy-fence floor" turns out to be half the story.** That
+> sentence was written when no unpolled figure existed to compare against — the
+> only measurement of a page *not* polling was from an older build of
+> `webgpu.html`. The fence poll is now a switch on the page, and with it off, the
+> same page on the same device in the same session measures **2.44 ms**. The
+> floor is 2.44, not 3.71: **the C++ path pays 1.27 ms beyond it**, and not
+> polling does not account for that. See
+> [the seven-case run](#the-four-cases-and-what-the-floor-actually-is) below.
+
+### The four cases, and what the floor actually is
+
+`webgpu.html` can now be switched between polling the fence and the plain
+`await mapAsync` an ordinary page writes, which crosses with its fused /
+per-layer toggle into four cases. Measured with LiteRT's two backends and the
+browser-native API alongside them — same custom Chromium 153, content from Pages,
+fixed clocks, `timing_runs=1000`, 3 sessions × 5, one drawn digit, each page
+printing which case it ran:
+
+| Case | Page | Median | CV | vs CPU |
+| --- | --- | ---: | ---: | ---: |
+| LiteRT.js — **CPU (`wasm`)** | `index.html` | **0.090 ms** | **0.0%** | 1.00× |
+| Direct WebGPU — **fused · poll** | `webgpu.html` | **0.480 ms** | 7.9% | 5.3× |
+| Direct WebGPU — **per-layer · poll** | `webgpu.html` | **0.510 ms** | 43.1%* | 5.7× |
+| LiteRT.js — GPU (`webgpu`) | `index.html` | **1.410 ms** | 3.8% | 15.7× |
+| Direct WebGPU — **fused · no poll** | `webgpu.html` | **2.440 ms** | 1.7% | 27.1× |
+| Direct WebGPU — **per-layer · no poll** | `webgpu.html` | **2.540 ms** | 1.5% | 28.2× |
+| `navigator.digitclassifier` | `browser-model-api.html` | **3.710 ms** | 1.4% | 41.2× |
+
+\* one sample of 1.46 ms among fourteen between 0.44 and 0.62; without it, 10.7%.
+
+Four things fall out, three of them sharper than anything measured before:
+
+- **The poll is worth ~5×, A/B'd inside one page** — 2.440 → 0.480 fused,
+  2.540 → 0.510 per-layer, disjoint distributions (U = 225/225, p < 0.00001).
+  Every earlier version of this claim compared two *builds* of the page served
+  side by side; this is one build, one URL parameter apart.
+- **A dispatch costs ~0.05 ms.** The unpolled pair differs by **+0.100 ms** for
+  two extra dispatches at CV 1.5–1.7% (U = 14/225, p = 0.00001) — an order of
+  magnitude tighter than the second experiment's `0.03 – 0.51 ms` interval, and
+  near its bottom. Dispatch is 4% of an unpolled inference. It was never the
+  problem.
+- **The C++ API is 1.27 ms slower than the unpolled JavaScript page** (3.710 vs
+  2.440, 1.52×, disjoint). Two candidates, neither tested: `webgpu.html` splits
+  compute and readback into two submits, worth ~0.5 ms when it landed, and the
+  C++ path's structure is unknown to this measurement; and `classify()` copies
+  2352 floats across the Blink boundary per call. Settling it needs the module's
+  source or the same instrumentation `run()` got.
+- **LiteRT.js sits between the two fence modes** (1.410, against 0.480 polled and
+  2.440 unpolled), exactly where
+  [the trace](#traced-why-litertjs-is-faster) put it: it never polls, but its
+  submits and buffer churn service the fence a few times per call. The
+  hand-written page beats LiteRT **only** with the poll on. With it off, LiteRT
+  is 1.73× faster.
+
+**The CPU still wins, by 5.3×** over the fastest GPU path — narrower than any
+figure in this document, and still the same verdict.
+
+One caution the sweep adds: **raising the run count does not settle the polled
+figure.** At 100 / 1000 / 5000 runs the unpolled path reads 2.53 / 2.50 / 2.48 —
+settled at 100 — while the polled path wanders 0.77 / 0.53 / 0.68 and carries its
+fat tail at every count. The variance is event-loop scheduling, which scales with
+the measurement instead of averaging out inside it, so the treatment is many
+samples across force-stopped sessions rather than a bigger N. The polled median
+reproduces (0.48 here, 0.52 in the four-way, ~0.46 in the 3-session run); its
+individual samples do not.
+
+Full data, including the sweep and the one-time costs:
+[`2026-08-25-custom-chromium-seven-case.md`](measurements/2026-08-25-custom-chromium-seven-case.md).
 
 ### Settled: LiteRT.js is faster than the hand-written page
 

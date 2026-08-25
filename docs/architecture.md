@@ -522,6 +522,15 @@ browser or driver may service the fence differently.
 
 All three rows above are **stock Chrome 150**, so they compare with each other.
 
+A [run-count sweep on the custom build](measurements/2026-08-25-custom-chromium-seven-case.md)
+adds the reason the CV will not come down: at 100 / 1000 / 5000 runs per
+measurement the *unpolled* path reads 2.53 / 2.50 / 2.48 — settled — while the
+polled one wanders 0.77 / 0.53 / 0.68 and keeps its fat tail at every count. Each
+measurement is already a mean over N runs, so per-run noise would average away;
+this does not, because the poll waits on **event-loop scheduling**, which scales
+with the measurement rather than inside it. More runs is the wrong lever. Many
+samples, force-stopped sessions, medians.
+
 ### 7.5 And LiteRT.js? It avoids the delay without fixing it
 
 The obvious question: if the direct-GPU page was stuck at ~3.3 ms waiting on a
@@ -569,7 +578,7 @@ fence, it just does enough normal work to keep it moving. The hand-written page,
 once it stops waiting quietly and asks from every task, simply asks far more
 often.
 
-### 7.6 The C++ browser API proves the floor is real
+### 7.6 The C++ browser API pays the floor, and then some
 
 The three points so far are all JavaScript. The custom Chromium build adds a
 fourth that is not: `navigator.digitclassifier` runs the whole inference in Blink
@@ -590,22 +599,36 @@ sequenceDiagram
     CR->>GPU: run
     GPU-->>CR: fence signalled, work done in microseconds
     Note over CR: nothing queries the fence, and there is no JavaScript to poll it
-    Note over C,GPU: about 3.73 ms — the same floor, paid in C++
+    Note over C,GPU: about 3.71 ms — the floor is 2.44, so this is the floor plus ~1.27
     CR-->>P: one integer
 ```
 
-It does not disappear. Measured on the custom build it is **3.73 ms** (CV 1.7%),
+It does not disappear. Measured on the custom build it is **3.71 ms** (CV 1.4%),
 the *slowest* GPU path — it does the readback the ordinary way and never pokes the
-fence, so it pays the full wait every call, and the low CV is the tell: a path
-sitting on the floor run after run. That confirms §7.1 from the strongest possible
-direction — the ~3.3 ms is not the page, the language, or the runtime. And it
-inverts the third experiment's expectation: the leanest stack is now the slowest
-GPU path, because the hand-written JavaScript page beside it (0.52 ms) hurries the
-GPU process along and the C++ one does not. So the full spectrum, from most checks
-to none: fence-poll **0.52 ms** → LiteRT's incidental nudges **1.43 ms** →
-browser-native, checks nothing, **3.73 ms**. (Custom Chromium 153, fixed-count
-harness, kept apart from the stock figures;
-[data](measurements/2026-08-25-custom-chromium-four-way.md).)
+fence, and the low CV is the tell: a path sitting on a floor run after run. That
+confirms §7.1 from the strongest possible direction — the ~3.3 ms is not the page,
+the language, or the runtime. And it inverts the third experiment's expectation:
+the leanest stack is the slowest GPU path, because the JavaScript page beside it
+hurries the GPU process along and the C++ one does not.
+
+**But it is not sitting on the same floor.** Once `webgpu.html` could switch its
+poll off, the floor became measurable directly: the same page, same session, doing
+the same work without polling, costs **2.44 ms** (CV 1.7%). So the spectrum has
+four points, not three — most fence checks to none:
+
+| Path | Fence checks per call | Median |
+| --- | --- | ---: |
+| `webgpu.html` fence-poll | one per task until the map lands | **0.48 ms** |
+| LiteRT.js WebGPU | incidental, a few per call | **1.41 ms** |
+| `webgpu.html` no poll | none | **2.44 ms** |
+| `navigator.digitclassifier` | none | **3.71 ms** |
+
+The bottom two rows both check nothing, and differ by **1.27 ms**. Whatever that
+is — the C++ path may issue one submit where the JS page issues two, worth ~0.5 ms
+when that change landed, and it copies 2352 floats across the Blink boundary per
+call — it is *not* the lazy fence, and this document should not keep attributing
+it to one. (Custom Chromium 153, fixed-count harness, kept apart from the stock
+figures; [data](measurements/2026-08-25-custom-chromium-seven-case.md).)
 
 ---
 

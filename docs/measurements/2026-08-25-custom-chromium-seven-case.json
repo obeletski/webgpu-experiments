@@ -1,0 +1,361 @@
+{
+  "session": "2026-08-25 custom Chromium seven-case: the fence poll A/B'd in-page",
+  "date": "2026-08-25",
+  "device": "OnePlus 13 (CPH2653, Snapdragon 8 Elite, Adreno 830, Android 16 / API 36)",
+  "browser": "custom Chromium 153.0.8005.0 release (org.chromium.chrome), launched with --enable-blink-features=DigitClassifier",
+  "browserWarning": "NOT stock Chrome; three milestones newer and not an official build. Never pool these figures with any stock-Chrome table.",
+  "content": "GitHub Pages over HTTPS (https://obeletski.github.io/webgpu-experiments)",
+  "clocks": "cmd power set-fixed-performance-mode-enabled true, restored after",
+  "protocol": "driven over the DevTools protocol (adb forward tcp:9222, Runtime.evaluate); one identical injected vertical stroke per page; six page loads per session with am force-stop between each; stale restored tabs closed and the target matched on its exact URL; 4 s warm-up burst discarded before each case; timing_runs=1000; 3 sessions x 5 samples per case; median reported",
+  "runs": 1000,
+  "sessions": 3,
+  "samplesPerSession": 5,
+  "cases": {
+    "C1": {
+      "name": "LiteRT.js \u2014 GPU (webgpu)",
+      "url": "https://obeletski.github.io/webgpu-experiments/index.html?timing_runs=1000",
+      "n": 15,
+      "median": 1.41,
+      "mean": 1.4227,
+      "sd": 0.0542,
+      "cv": 3.81,
+      "min": 1.36,
+      "max": 1.51,
+      "samples": [
+        1.38,
+        1.43,
+        1.43,
+        1.48,
+        1.36,
+        1.37,
+        1.49,
+        1.4,
+        1.37,
+        1.48,
+        1.51,
+        1.38,
+        1.36,
+        1.41,
+        1.49
+      ],
+      "oneTimePerSession": [
+        "compile 11.50 ms | cold start 19.00 ms",
+        "compile 10.90 ms | cold start 15.00 ms",
+        "compile 10.50 ms | cold start 13.50 ms"
+      ],
+      "resultLineExample": "Predicted: 1 (100.0% match) 1.36 ms on webgpu (mean of 1000)"
+    },
+    "C2": {
+      "name": "LiteRT.js \u2014 CPU (wasm)",
+      "url": "https://obeletski.github.io/webgpu-experiments/index.html?timing_runs=1000",
+      "n": 15,
+      "median": 0.09,
+      "mean": 0.09,
+      "sd": 0.0,
+      "cv": 0.0,
+      "min": 0.09,
+      "max": 0.09,
+      "samples": [
+        0.09,
+        0.09,
+        0.09,
+        0.09,
+        0.09,
+        0.09,
+        0.09,
+        0.09,
+        0.09,
+        0.09,
+        0.09,
+        0.09,
+        0.09,
+        0.09,
+        0.09
+      ],
+      "oneTimePerSession": [
+        "compile 4.80 ms | cold start 1.20 ms",
+        "compile 4.00 ms | cold start 1.00 ms",
+        "compile 5.80 ms | cold start 0.80 ms"
+      ],
+      "resultLineExample": "Predicted: 1 (100.0% match) 0.09 ms on wasm (mean of 1000)"
+    },
+    "C3": {
+      "name": "Direct WebGPU \u2014 fused \u00b7 poll",
+      "url": "https://obeletski.github.io/webgpu-experiments/webgpu.html?timing_runs=1000",
+      "n": 15,
+      "median": 0.48,
+      "mean": 0.4813,
+      "sd": 0.0381,
+      "cv": 7.93,
+      "min": 0.42,
+      "max": 0.55,
+      "samples": [
+        0.43,
+        0.49,
+        0.51,
+        0.44,
+        0.51,
+        0.46,
+        0.47,
+        0.55,
+        0.48,
+        0.48,
+        0.54,
+        0.42,
+        0.51,
+        0.45,
+        0.48
+      ],
+      "oneTimePerSession": [
+        "pipeline 0.10 ms | cold start 8.40 ms",
+        "pipeline 0.10 ms | cold start 10.50 ms",
+        "pipeline 0.10 ms | cold start 8.60 ms"
+      ],
+      "resultLineExample": "Predicted: 1 (100.0% match) 0.51 ms on fused \u00b7 poll (mean of 1000)"
+    },
+    "C4": {
+      "name": "Direct WebGPU \u2014 per-layer \u00b7 poll",
+      "url": "https://obeletski.github.io/webgpu-experiments/webgpu.html?timing_runs=1000&mode=layered",
+      "n": 15,
+      "median": 0.51,
+      "mean": 0.5793,
+      "sd": 0.2494,
+      "cv": 43.05,
+      "min": 0.44,
+      "max": 1.46,
+      "samples": [
+        0.47,
+        0.55,
+        0.49,
+        0.61,
+        0.49,
+        0.55,
+        0.48,
+        0.51,
+        1.46,
+        0.44,
+        0.48,
+        0.62,
+        0.51,
+        0.57,
+        0.46
+      ],
+      "oneTimePerSession": [
+        "pipeline 0.20 ms | cold start 9.10 ms",
+        "pipeline 0.20 ms | cold start 73.10 ms",
+        "pipeline 0.20 ms | cold start 59.30 ms"
+      ],
+      "resultLineExample": "Predicted: 1 (100.0% match) 0.49 ms on layered \u00b7 poll (mean of 1000)"
+    },
+    "C5": {
+      "name": "Direct WebGPU \u2014 fused \u00b7 no poll",
+      "url": "https://obeletski.github.io/webgpu-experiments/webgpu.html?timing_runs=1000&fence_poll=0",
+      "n": 15,
+      "median": 2.44,
+      "mean": 2.45,
+      "sd": 0.0417,
+      "cv": 1.7,
+      "min": 2.38,
+      "max": 2.53,
+      "samples": [
+        2.53,
+        2.44,
+        2.42,
+        2.45,
+        2.45,
+        2.5,
+        2.44,
+        2.44,
+        2.43,
+        2.39,
+        2.49,
+        2.47,
+        2.42,
+        2.38,
+        2.5
+      ],
+      "oneTimePerSession": [
+        "pipeline 0.10 ms | cold start 7.70 ms",
+        "pipeline <1 ms | cold start 38.00 ms",
+        "pipeline <1 ms | cold start 36.50 ms"
+      ],
+      "resultLineExample": "Predicted: 1 (100.0% match) 2.45 ms on fused \u00b7 no poll (mean of 1000)"
+    },
+    "C6": {
+      "name": "Direct WebGPU \u2014 per-layer \u00b7 no poll",
+      "url": "https://obeletski.github.io/webgpu-experiments/webgpu.html?timing_runs=1000&fence_poll=0&mode=layered",
+      "n": 15,
+      "median": 2.54,
+      "mean": 2.5393,
+      "sd": 0.0371,
+      "cv": 1.46,
+      "min": 2.49,
+      "max": 2.61,
+      "samples": [
+        2.57,
+        2.49,
+        2.52,
+        2.51,
+        2.56,
+        2.55,
+        2.53,
+        2.58,
+        2.5,
+        2.57,
+        2.5,
+        2.49,
+        2.54,
+        2.57,
+        2.61
+      ],
+      "oneTimePerSession": [
+        "pipeline 0.20 ms | cold start 8.30 ms",
+        "pipeline 0.10 ms | cold start 52.00 ms",
+        "pipeline 0.10 ms | cold start 40.60 ms"
+      ],
+      "resultLineExample": "Predicted: 1 (100.0% match) 2.56 ms on layered \u00b7 no poll (mean of 1000)"
+    },
+    "C7": {
+      "name": "navigator.digitclassifier",
+      "url": "https://obeletski.github.io/webgpu-experiments/browser-model-api.html?timing_runs=1000",
+      "n": 15,
+      "median": 3.71,
+      "mean": 3.7207,
+      "sd": 0.0506,
+      "cv": 1.36,
+      "min": 3.65,
+      "max": 3.82,
+      "samples": [
+        3.66,
+        3.78,
+        3.7,
+        3.74,
+        3.76,
+        3.66,
+        3.71,
+        3.82,
+        3.73,
+        3.79,
+        3.69,
+        3.65,
+        3.68,
+        3.71,
+        3.73
+      ],
+      "oneTimePerSession": [
+        "getModel() 20.90 ms | cold start 19.70 ms",
+        "getModel() 234.30 ms | cold start 8.80 ms",
+        "getModel() 147.30 ms | cold start 10.00 ms"
+      ],
+      "resultLineExample": "Predicted: 1 3.76 ms per classify() (mean of 1000) no confidence - the API returns the digit only"
+    }
+  },
+  "runCountSweep": {
+    "note": "C8. One session, 5 samples per cell, same protocol. Tests the stopping rule (raise the count until the median stops moving) on the two fused cases.",
+    "data": {
+      "fused \u00b7 poll": {
+        "100": {
+          "samples": [
+            1.02,
+            0.77,
+            0.81,
+            0.74,
+            0.74
+          ],
+          "median": 0.77
+        },
+        "1000": {
+          "samples": [
+            0.53,
+            0.45,
+            1.22,
+            0.54,
+            0.44
+          ],
+          "median": 0.53
+        },
+        "5000": {
+          "samples": [
+            0.68,
+            0.76,
+            0.46,
+            0.86,
+            0.5
+          ],
+          "median": 0.68
+        }
+      },
+      "fused \u00b7 no poll": {
+        "100": {
+          "samples": [
+            2.53,
+            2.51,
+            2.4,
+            2.67,
+            2.54
+          ],
+          "median": 2.53
+        },
+        "1000": {
+          "samples": [
+            2.54,
+            2.5,
+            2.52,
+            2.49,
+            2.47
+          ],
+          "median": 2.5
+        },
+        "5000": {
+          "samples": [
+            2.46,
+            2.49,
+            2.48,
+            2.46,
+            2.48
+          ],
+          "median": 2.48
+        }
+      }
+    }
+  },
+  "derived": {
+    "fencePollFused": {
+      "from": 2.44,
+      "to": 0.48,
+      "ratio": 5.08,
+      "U": "225/225",
+      "permutationP": "<0.00001"
+    },
+    "fencePollPerLayer": {
+      "from": 2.54,
+      "to": 0.51,
+      "ratio": 4.98,
+      "U": "225/225",
+      "permutationP": "<0.00001"
+    },
+    "dispatchCostUnpolled": {
+      "perLayerMinusFused": 0.1,
+      "dispatches": 2,
+      "perDispatch": 0.05,
+      "U": "14/225",
+      "permutationP": 1e-05
+    },
+    "dispatchCostPolled": {
+      "perLayerMinusFused": 0.03,
+      "U": "66/225",
+      "permutationP": 0.03053
+    },
+    "cppApiVsUnpolledJs": {
+      "delta": 1.27,
+      "ratio": 1.52,
+      "U": "225/225",
+      "permutationP": "<0.00001"
+    },
+    "cpuVsBestGpu": {
+      "cpu": 0.09,
+      "bestGpu": 0.48,
+      "ratio": 5.33
+    }
+  }
+}
