@@ -154,12 +154,13 @@
     .backend button:first-child { border-radius: 6px 0 0 6px; }
     .backend button:last-child  { border-radius: 0 6px 6px 0; border-left: none; }
 
-    .backend button:hover:not(:disabled):not([aria-pressed="true"]) {
+    .backend button:hover:not(:disabled):not([aria-pressed="true"]):not([aria-checked="true"]) {
       background-color: #333;
       color: #ddd;
     }
 
-    .backend button[aria-pressed="true"] {
+    .backend button[aria-pressed="true"],
+    .backend button[aria-checked="true"] {
       background-color: #007acc;
       border-color: #007acc;
       color: #fff;
@@ -232,6 +233,15 @@
     <div class="backend" role="group" aria-label="Dispatch mode">
       <button id="fusedBtn" type="button" aria-pressed="false">fused · 1 dispatch</button>
       <button id="layeredBtn" type="button" aria-pressed="false">per-layer · 3 dispatches</button>
+    </div>
+
+    <!-- Crossed with the dispatch mode above, this gives the four cases the page
+         exists to compare: {fused, per-layer} x {fence poll, plain await}. A
+         radiogroup rather than a toggle pair: the two are one exclusive choice of
+         how run() waits, not two independent switches. -->
+    <div class="backend" role="radiogroup" aria-label="Fence wait strategy">
+      <button id="pollOnBtn" type="button" role="radio" aria-checked="false">fence poll · on</button>
+      <button id="pollOffBtn" type="button" role="radio" aria-checked="false">fence poll · off</button>
     </div>
 
     <div id="modeInfo" class="backend-info"></div>
@@ -434,6 +444,8 @@
 
     const fusedBtn = document.getElementById('fusedBtn');
     const layeredBtn = document.getElementById('layeredBtn');
+    const pollOnBtn = document.getElementById('pollOnBtn');
+    const pollOffBtn = document.getElementById('pollOffBtn');
     const predictBtn = document.getElementById('predictBtn');
     const modeInfo = document.getElementById('modeInfo');
 
@@ -447,13 +459,15 @@
     // reporting the zero-input answer for whatever was actually drawn.
     let busy = false;
 
-    // Enable or disable the three GPU controls as a group, and set the `busy`
+    // Enable or disable the five GPU controls as a group, and set the `busy`
     // re-entrancy flag (see the note above) in one place.
     function setEnabled(on) {
       busy = !on;
       predictBtn.disabled = !on;
       fusedBtn.disabled = !on;
       layeredBtn.disabled = !on;
+      pollOnBtn.disabled = !on;
+      pollOffBtn.disabled = !on;
     }
 
     setEnabled(false);
@@ -752,6 +766,11 @@ fn main() {
 
       const built = {};
       let mode = 'fused';
+      // How run() waits for the readback. See the long note above run(); the
+      // page ships with the poll on because it is ~7x faster, and keeps the
+      // plain await selectable because it is what an ordinary WebGPU page does
+      // and therefore what the comparison is against.
+      let poll = true;
 
       // Compile the single fused shader and bind all six buffers to it: one pass,
       // one workgroup, the whole inference in one dispatch.
@@ -800,6 +819,19 @@ fn main() {
         if (!built[next]) built[next] = next === 'fused' ? buildFused() : buildLayered();
       }
 
+      // Select how run() waits, and drop every compiled pipeline. The shaders do
+      // not depend on the wait strategy - the rebuild costs one compile - but the
+      // "pipeline" and "cold start" figures on screen do, because a cold start is
+      // an inference and an inference is mostly the wait. Clearing the cache
+      // forces both to be re-measured for the configuration now selected, so all
+      // four cases report a triple that belongs to them. The engine cannot run
+      // until setMode() rebuilds, which useMode() does immediately after - and
+      // which anything driving the engine through window.__engine must do too.
+      function setPoll(on) {
+        poll = !!on;
+        for (const key of Object.keys(built)) delete built[key];
+      }
+
       // A real macrotask boundary with near-zero latency, for the poll loop in
       // run() below. setTimeout(0) clamps to >= 1 ms, which would put the poll
       // cadence above the thing being polled.
@@ -829,7 +861,17 @@ fn main() {
       // exits on device loss because mapAsync settles either way. The result
       // stays bit-identical: mapAsync still cannot resolve before the copy
       // completes, polling only changes when Chrome notices that it has.
+      //
+      // `poll` selects between exactly those two waits and changes nothing else:
+      // same submits, same buffers, same shaders, same output. Off is the plain
+      // `await mapAsync` an ordinary page writes and is what the ~2.7 ms
+      // measurements were taken on; the difference between the two, crossed with
+      // fused/per-layer, is the four-case comparison this page now offers.
       async function run(input) {
+        // Cheap next to a submit, and it turns the one way this engine can be
+        // misused - run() after setPoll() without a setMode() - into a sentence
+        // instead of a TypeError inside the encoder loop.
+        if (!built[mode]) throw new Error('setPoll() dropped the pipelines; call setMode() before run()');
         device.queue.writeBuffer(buf.input, 0, input);
         const enc = device.createCommandEncoder();
         const pass = enc.beginComputePass();
@@ -843,12 +885,17 @@ fn main() {
         const enc2 = device.createCommandEncoder();
         enc2.copyBufferToBuffer(buf.result, 0, buf.read, 0, 40);
         device.queue.submit([enc2.finish()]);         // submit 2: readback copy
-        let mapDone = false;
         const mapped = buf.read.mapAsync(GPUMapMode.READ);
-        mapped.then(() => { mapDone = true; }, () => { mapDone = true; });
-        while (!mapDone) {
-          device.queue.onSubmittedWorkDone().catch(() => {});
-          await taskYield();
+        if (poll) {
+          // Watch the promise's settled state rather than awaiting it, so the
+          // loop can keep poking between checks. Both handlers set the flag: a
+          // rejected map must end the loop too, and the `await` below rethrows.
+          let mapDone = false;
+          mapped.then(() => { mapDone = true; }, () => { mapDone = true; });
+          while (!mapDone) {
+            device.queue.onSubmittedWorkDone().catch(() => {});
+            await taskYield();
+          }
         }
         await mapped;
         const out = new Float32Array(buf.read.getMappedRange().slice(0));
@@ -857,7 +904,7 @@ fn main() {
       }
 
       setMode('fused');
-      return { setMode, run, get mode() { return mode; } };
+      return { setMode, setPoll, run, get mode() { return mode; }, get poll() { return poll; } };
     }
 
     let engine;
@@ -887,6 +934,12 @@ fn main() {
     };
     const TIMING_RUNS = timingParam('timing_runs', 100);
 
+    // ?fence_poll=0 loads with the plain await selected. The radio group does the
+    // same thing by hand; the parameter exists so a measurement session can serve
+    // one URL per case and force-stop the browser between them, without a driver
+    // having to click anything. Anything other than "0" leaves the poll on.
+    const FENCE_POLL = TIMING_PARAMS.get('fence_poll') !== '0';
+
     // Renders a duration, admitting when it fell below the clock's resolution
     // rather than printing a confident "0.00 ms".
     function ms(value) {
@@ -907,6 +960,14 @@ fn main() {
       const elapsed = performance.now() - started;
 
       return { values, mean: elapsed / TIMING_RUNS, runs: TIMING_RUNS };
+    }
+
+    // Names the case a figure belongs to: one of fused/per-layer crossed with
+    // poll/no poll. Every reported number goes out with this attached, because
+    // the four are not comparable with each other and a bare "3.20 ms" from this
+    // page no longer says which one it is.
+    function configLabel() {
+      return `${engine.mode}${engine.poll ? ' · poll' : ' · no poll'}`;
     }
 
     // These two costs belong to the active dispatch mode, not to any one
@@ -932,10 +993,14 @@ fn main() {
       paintToggle();
     }
 
-    // Reflect the engine's current dispatch mode on the two toggle buttons.
+    // Reflect the engine's current dispatch mode and wait strategy on the four
+    // buttons. aria-pressed for the toggle pair, aria-checked for the radio pair
+    // - the CSS keys the selected colour off whichever the control uses.
     function paintToggle() {
       fusedBtn.setAttribute('aria-pressed', String(engine && engine.mode === 'fused'));
       layeredBtn.setAttribute('aria-pressed', String(engine && engine.mode === 'layered'));
+      pollOnBtn.setAttribute('aria-checked', String(!!engine && engine.poll));
+      pollOffBtn.setAttribute('aria-checked', String(!!engine && !engine.poll));
     }
 
     async function switchMode(next) {
@@ -949,7 +1014,32 @@ fn main() {
         modeInfo.innerHTML = '<span class="timing">building...</span>';
         try {
           await useMode(next);
-          resultDiv.innerText = `Ready on ${next}.`;
+          resultDiv.innerText = `Ready on ${configLabel()}.`;
+        } catch (err) {
+          console.error(err);
+          resultDiv.innerText = 'Switching failed. Check the console.';
+          modeInfo.textContent = '';
+        } finally {
+          setEnabled(true);
+        }
+      }
+      paintToggle();
+    }
+
+    // Same shape as switchMode, and it goes through useMode() for the same
+    // reason: setPoll() drops the compiled pipelines, so something has to rebuild
+    // them before the next run() - and rebuilding is exactly what re-times the
+    // pipeline and cold-start figures for the newly selected case.
+    async function switchFence(on) {
+      if (!engine || busy) return;
+      if (engine.poll !== on) {
+        setEnabled(false);
+        resultDiv.innerText = `Turning the fence poll ${on ? 'on' : 'off'}...`;
+        modeInfo.innerHTML = '<span class="timing">building...</span>';
+        try {
+          engine.setPoll(on);
+          await useMode(engine.mode);
+          resultDiv.innerText = `Ready on ${configLabel()}.`;
         } catch (err) {
           console.error(err);
           resultDiv.innerText = 'Switching failed. Check the console.';
@@ -963,6 +1053,8 @@ fn main() {
 
     fusedBtn.addEventListener('click', () => switchMode('fused'));
     layeredBtn.addEventListener('click', () => switchMode('layered'));
+    pollOnBtn.addEventListener('click', () => switchFence(true));
+    pollOffBtn.addEventListener('click', () => switchFence(false));
 
     // One-time startup: fetch and parse the .tflite for its weights, acquire a GPU
     // device (wiring device-lost to a message), verify every shader compiles, then
@@ -981,9 +1073,10 @@ fn main() {
       });
       await checkShaders(device);
       engine = createEngine(device, weights);
-      window.__engine = engine;              // test hook
-      await useMode('fused');
-      resultDiv.innerText = 'Ready on fused.';
+      window.__engine = engine;              // test hook: exposes setMode/setPoll
+      engine.setPoll(FENCE_POLL);            // before the first build, so the
+      await useMode('fused');                // cold start belongs to this case
+      resultDiv.innerText = `Ready on ${configLabel()}.`;
       setEnabled(true);
     }
 
@@ -1003,7 +1096,7 @@ fn main() {
         return;
       }
 
-      const ranOn = engine.mode;
+      const ranOn = configLabel();
       setEnabled(false);
       resultDiv.innerText = 'Classifying...';
 

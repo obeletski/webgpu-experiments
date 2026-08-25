@@ -25,7 +25,7 @@ ways, so the cost of the machinery around the arithmetic can be isolated:
 | Page | Implementation | Needs |
 | --- | --- | --- |
 | [`index.html`](index.html) | LiteRT.js with a CPU (`wasm`) / GPU (`webgpu`) switcher | any browser |
-| [`webgpu.html`](webgpu.html) | the `.tflite` parsed in JS, hand-written WGSL, fused vs per-layer | WebGPU |
+| [`webgpu.html`](webgpu.html) | the `.tflite` parsed in JS, hand-written WGSL; fused vs per-layer × fence-poll on vs off | WebGPU |
 | [`browser-model-api.html`](browser-model-api.html) | `navigator.digitclassifier`, a Web API compiled into a custom Chromium build | that build |
 
 ## Results
@@ -180,6 +180,10 @@ count raised until the median stops moving — is in
 [Getting numbers that reproduce](docs/findings.md#getting-numbers-that-reproduce).
 All three pages accept `?timing_runs=` to override the default of 100 runs per
 measurement; **CPU paths need `?timing_runs=1000`** or they read ~56% too slow.
+`webgpu.html` also takes `?fence_poll=0` to select the plain `await mapAsync`
+instead of the fence poll, which — crossed with its fused / per-layer toggle —
+is the [four cases](docs/findings.md#the-round-trip-that-wasnt-chromes-lazy-fence)
+that page can be measured in.
 
 ## Documentation
 

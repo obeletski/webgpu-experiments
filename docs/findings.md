@@ -697,6 +697,18 @@ rides on task scheduling, so the tail is fatter even though the medians repeat.
 > overhead still dwarfs the arithmetic; there is simply less of it than Chrome
 > was charging.
 
+**Both waits are now selectable on the page.** `webgpu.html` carries a second
+segmented control — *fence poll · on / off* — beside its fused / per-layer one,
+so the two dimensions cross into **four cases**: the poll and the plain
+`await mapAsync` differ in nothing else, same submits, same buffers, same
+shaders, bit-identical output. `?fence_poll=0` selects the plain await at load,
+which is how a measurement session should take the four (one URL per case,
+browser force-stopped between them) rather than clicking through them. Every
+figure the page prints now names its case — `0.38 ms on fused · poll` — because
+the two fence modes differ by ~7× and an unlabelled number from this page says
+nothing. Selecting a fence mode rebuilds the pipelines, so the *pipeline* and
+*cold start* figures belong to the case on screen too.
+
 Full trace and raw data:
 [`2026-08-24-litert-vs-handwritten-tracing.md`](measurements/2026-08-24-litert-vs-handwritten-tracing.md),
 [`2026-08-24-webgpu-mapasync-poll.md`](measurements/2026-08-24-webgpu-mapasync-poll.md).

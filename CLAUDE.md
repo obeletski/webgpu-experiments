@@ -96,7 +96,12 @@ Page-specific:
   measurement of dispatch cost. Its `run()` is **two submits (compute, then the
   readback copy) plus an `onSubmittedWorkDone()` poll issued from each fresh
   macrotask while the `mapAsync` is pending** — that shape is load-bearing, see
-  the rules below.
+  the rules below. The poll is a **radio group on the page** (`?fence_poll=0`
+  starts with it off), so the page runs **four cases**: {fused, per-layer} ×
+  {poll, plain await}. Selecting a fence mode drops the compiled pipelines on
+  purpose, so the pipeline and cold-start figures always belong to the case on
+  screen; anything driving `window.__engine` must call `setMode()` after
+  `setPoll()` or `run()` throws.
 - `browser-model-api.html` — fetches nothing at all; hands 2352 floats to C++
   inside Blink. Detects which of {build, flag, secure context} is missing and
   says so rather than failing silently.
@@ -111,6 +116,10 @@ Page-specific:
   browsers are involved (below) and they are three milestones apart.
 - **Label every measurement with its browser, device and protocol.** Raw data
   goes in `docs/measurements/`; the README summarises and links to it.
+- **Label every `webgpu.html` figure with which of the four cases it is** —
+  dispatch mode *and* fence mode. The page prints both on the result line;
+  measurement files must carry both. Poll-on and poll-off differ by ~7×, so an
+  unlabelled figure from this page is worthless.
 - **Do not tidy `run()` in `webgpu.html`.** It looks redundant and is not: the
   poll is worth ~7× (2.7 ms → ~0.4 ms) and every neighbouring shape was measured
   and is worse — one `onSubmittedWorkDone` next to the submits changes nothing
@@ -280,7 +289,10 @@ side by side so the only difference is the code.
   the live site; only `decodedBodySize` is trustworthy from the device.
 
 **One measurement is 100 inferences.** The harness runs a fixed `TIMING_RUNS`
-(default 100) and reports the mean. The count is fixed rather than derived from a
+(default 100) and reports the mean. `webgpu.html` additionally takes
+`?fence_poll=0` to load with the plain `await mapAsync` instead of the fence
+poll — one URL per case, so a session can force-stop the browser between the
+four rather than clicking. The run count is fixed rather than derived from a
 time budget so that **every backend is sampled alike**: under the old budget a
 0.15 ms CPU path bought ~33 internal runs and a 2–3 ms GPU path only 1–3, so the
 reported spreads were never comparable quantities. Override with
