@@ -701,9 +701,9 @@ rides on task scheduling, so the tail is fatter even though the medians repeat.
 segmented control — *fence poll · on / off* — beside its fused / per-layer one,
 so the two dimensions cross into **four cases**: the poll and the plain
 `await mapAsync` differ in nothing else, same submits, same buffers, same
-shaders, bit-identical output. `?fence_poll=0` selects the plain await at load,
-which is how a measurement session should take the four (one URL per case,
-browser force-stopped between them) rather than clicking through them. Every
+shaders, bit-identical output. `?mode=layered` and `?fence_poll=0` select the
+four by URL, which is how a measurement session should take them — one URL per
+case, browser force-stopped between them — rather than clicking through them. Every
 figure the page prints now names its case — `0.38 ms on fused · poll` — because
 the two fence modes differ by ~7× and an unlabelled number from this page says
 nothing. Selecting a fence mode rebuilds the pipelines, so the *pipeline* and

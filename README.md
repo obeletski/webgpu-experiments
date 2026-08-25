@@ -180,10 +180,9 @@ count raised until the median stops moving — is in
 [Getting numbers that reproduce](docs/findings.md#getting-numbers-that-reproduce).
 All three pages accept `?timing_runs=` to override the default of 100 runs per
 measurement; **CPU paths need `?timing_runs=1000`** or they read ~56% too slow.
-`webgpu.html` also takes `?fence_poll=0` to select the plain `await mapAsync`
-instead of the fence poll, which — crossed with its fused / per-layer toggle —
-is the [four cases](docs/findings.md#the-round-trip-that-wasnt-chromes-lazy-fence)
-that page can be measured in.
+`webgpu.html` also takes `?mode=layered` and `?fence_poll=0`, which between them
+address the [four cases](docs/findings.md#the-round-trip-that-wasnt-chromes-lazy-fence)
+that page can be measured in — one URL each, nothing to click.
 
 ## Documentation
 

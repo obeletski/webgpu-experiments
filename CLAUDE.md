@@ -96,9 +96,9 @@ Page-specific:
   measurement of dispatch cost. Its `run()` is **two submits (compute, then the
   readback copy) plus an `onSubmittedWorkDone()` poll issued from each fresh
   macrotask while the `mapAsync` is pending** — that shape is load-bearing, see
-  the rules below. The poll is a **radio group on the page** (`?fence_poll=0`
-  starts with it off), so the page runs **four cases**: {fused, per-layer} ×
-  {poll, plain await}. Selecting a fence mode drops the compiled pipelines on
+  the rules below. The poll is a **radio group on the page**, so the page runs
+  **four cases**: {fused, per-layer} × {poll, plain await}, each addressable by
+  URL (`?mode=layered`, `?fence_poll=0`). Selecting a fence mode drops the compiled pipelines on
   purpose, so the pipeline and cold-start figures always belong to the case on
   screen; anything driving `window.__engine` must call `setMode()` after
   `setPoll()` or `run()` throws.
@@ -290,9 +290,9 @@ side by side so the only difference is the code.
 
 **One measurement is 100 inferences.** The harness runs a fixed `TIMING_RUNS`
 (default 100) and reports the mean. `webgpu.html` additionally takes
-`?fence_poll=0` to load with the plain `await mapAsync` instead of the fence
-poll — one URL per case, so a session can force-stop the browser between the
-four rather than clicking. The run count is fixed rather than derived from a
+`?mode=layered` and `?fence_poll=0`, which select its four cases without a click
+— so a session can force-stop the browser between them and keep the driver out
+of the timed region entirely. The run count is fixed rather than derived from a
 time budget so that **every backend is sampled alike**: under the old budget a
 0.15 ms CPU path bought ~33 internal runs and a 2–3 ms GPU path only 1–3, so the
 reported spreads were never comparable quantities. Override with

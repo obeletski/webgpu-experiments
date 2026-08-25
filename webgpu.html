@@ -934,11 +934,15 @@ fn main() {
     };
     const TIMING_RUNS = timingParam('timing_runs', 100);
 
-    // ?fence_poll=0 loads with the plain await selected. The radio group does the
-    // same thing by hand; the parameter exists so a measurement session can serve
-    // one URL per case and force-stop the browser between them, without a driver
-    // having to click anything. Anything other than "0" leaves the poll on.
+    // ?fence_poll=0 loads with the plain await selected, ?mode=layered with the
+    // three-dispatch path. The two controls do the same thing by hand; the
+    // parameters exist so a measurement session can address each of the four
+    // cases by URL and force-stop the browser between them, with nothing clicked
+    // in or near the timed region. Both fall back to the page's default rather
+    // than erroring on a typo: anything but "0" polls, anything but "layered"
+    // is fused.
     const FENCE_POLL = TIMING_PARAMS.get('fence_poll') !== '0';
+    const DISPATCH_MODE = TIMING_PARAMS.get('mode') === 'layered' ? 'layered' : 'fused';
 
     // Renders a duration, admitting when it fell below the clock's resolution
     // rather than printing a confident "0.00 ms".
@@ -1075,7 +1079,7 @@ fn main() {
       engine = createEngine(device, weights);
       window.__engine = engine;              // test hook: exposes setMode/setPoll
       engine.setPoll(FENCE_POLL);            // before the first build, so the
-      await useMode('fused');                // cold start belongs to this case
+      await useMode(DISPATCH_MODE);          // cold start belongs to this case
       resultDiv.innerText = `Ready on ${configLabel()}.`;
       setEnabled(true);
     }
