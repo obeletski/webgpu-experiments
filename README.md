@@ -1,15 +1,22 @@
 # CPU vs GPU Inference in the Browser
 
-**A [LiteRT.js](https://ai.google.dev/edge/litert/web) benchmark: WebAssembly
-against WebGPU, measured on a hand-drawn MNIST digit classifier.** Draw a digit,
-classify it, then flip the backend and run the same drawing through the other
-one. Every figure the UI shows — compile, cold start, steady state — is part of
-the comparison.
+**How much does it cost to ask a browser to run a tiny neural network?** One
+hand-drawn MNIST digit classifier, implemented three ways — through
+[LiteRT.js](https://ai.google.dev/edge/litert/web) on WebAssembly and WebGPU,
+by hand against the WebGPU API in WGSL, and as
+**`navigator.digitclassifier`: the model compiled into a custom Chromium build**,
+weights linked into the binary, no JavaScript in the timed region at all.
 
-The classifier is the vehicle, not the subject: it exists to give both backends
-identical work so their cost can be compared. **On every device tested the CPU
-wins**, because a 0.6 MFLOP inference is far too small to pay for a GPU
-round-trip.
+Draw a digit, classify it, then run the same drawing through another
+implementation. Every figure the UI shows — compile, cold start, steady state —
+is part of the comparison.
+
+The classifier is the vehicle, not the subject: it exists to give every path
+identical work. **On every device tested the CPU wins**, because a 0.6 MFLOP
+inference is far too small to pay for a GPU round-trip — and **putting the model
+inside the browser does not rescue the GPU**. The C++ implementation with the
+leanest stack in the repository is the *slowest* GPU path measured, for reasons
+that took three experiments to pin down.
 
 <p align="center">
   <img src="screenshot.png" width="360"
@@ -30,76 +37,70 @@ ways, so the cost of the machinery around the arithmetic can be isolated:
 
 ## Results
 
-**OnePlus CPH2653**, **stock Chrome 150.0.7871.188**, content served from the
-Pages site over HTTPS, clocks fixed, Chrome force-stopped between pages, 3
-sessions × 5 samples each. Every figure below is taken with the **fixed-count
-harness at a run count high enough that the median has stopped moving** — see
-[how many runs a measurement needs](docs/findings.md#the-cpu-baseline-and-how-many-runs-a-measurement-needs).
+Seven cases, one drawn digit, measured together so they can be compared with each
+other. **OnePlus CPH2653**, **custom Chromium 153.0.8005.0 release**, content
+from the Pages site over HTTPS, clocks fixed, browser force-stopped between
+pages, `?timing_runs=1000`, **3 sessions × 5 samples** (n = 15 per row), median
+reported.
 
-| Implementation | Page | Median | CV | vs CPU |
+| Case | Page | Median | CV | vs CPU |
 | --- | --- | ---: | ---: | ---: |
 | **LiteRT.js — CPU (`wasm`)** | `index.html` | **0.090 ms** | **0.0%** | 1.00× |
-| LiteRT.js — GPU (`webgpu`) | `index.html` | **1.610 ms** | 2.1% | **17.9×** |
-| Direct WebGPU — fused | `webgpu.html` | **3.270 ms** | 1.9% | **36.3×** |
+| Direct WebGPU — **fused · fence poll** | `webgpu.html` | **0.480 ms** | 7.9% | **5.3×** |
+| Direct WebGPU — **per-layer · fence poll** | `webgpu.html` | **0.510 ms** | 43.1%¹ | 5.7× |
+| LiteRT.js — GPU (`webgpu`) | `index.html` | **1.410 ms** | 3.8% | 15.7× |
+| Direct WebGPU — **fused · no poll** | `webgpu.html` | **2.440 ms** | 1.7% | 27.1× |
+| Direct WebGPU — **per-layer · no poll** | `webgpu.html` | **2.540 ms** | 1.5% | 28.2× |
+| **`navigator.digitclassifier`** (C++ in Blink) | `browser-model-api.html` | **3.710 ms** | 1.4% | 41.2× |
 
-**The CPU is 17.9× faster than the best GPU path.** Hand-writing the WebGPU path
-does not help: it is 2.03× slower than the runtime it was written to beat.
+¹ One sample of 1.46 ms among fourteen between 0.44 and 0.62 — the fence poll's
+tail, which [does not average out](docs/findings.md#the-four-cases-and-what-the-floor-actually-is).
+Without it, 10.7%. The median is unaffected.
 
-> [!NOTE]
-> The **3.270 ms** direct-WebGPU figure predates two fixes, and the second one
-> reverses the sentence above. After
-> [tracing why LiteRT is faster](docs/findings.md#traced-why-litertjs-is-faster),
-> `webgpu.html`'s `run()` issues the compute and the readback as two separate
-> submits (**~2.75 ms** fused,
-> [data](docs/measurements/2026-08-24-webgpu-two-submit.md)) — and then the
-> remaining gap turned out not to be the round-trip at all but **Chrome's lazy
-> fence servicing**: polling `onSubmittedWorkDone` while the `mapAsync` is
-> pending measured fused at **~0.38 ms** and per-layer at **~0.41 ms** across two
-> sessions, past LiteRT by ~4×
-> ([data](docs/measurements/2026-08-24-webgpu-mapasync-poll.md)). Output stays
-> bit-identical; nothing is pipelined — each call still waits for its own result.
-> The table keeps the rigorously-sampled 3.270 ms until the fix is re-measured
-> from the Pages site with the full 3-session protocol; when it is, the
-> hand-written page becomes the fastest GPU path and the CPU's margin over the
-> GPU narrows from 17.9× to ~4×.
+**The CPU is 5.3× faster than the best GPU path** — the narrowest margin this
+repository has measured, and the same verdict every earlier measurement reached.
+Three things behind the ordering:
 
-Raw data:
-[CPU baseline and run-count sweep](docs/measurements/2026-08-24-stock-chrome-cpu-baseline.md)
-·
-[LiteRT vs direct WebGPU](docs/measurements/2026-08-24-stock-chrome-litert-vs-webgpu.md).
+- **The browser-built-in model is the slowest GPU path**, at 3.710 ms. Removing
+  JavaScript, the runtime and the download did not remove the cost; it removed
+  the *workaround*. The page beside it reaches 0.480 ms only by hurrying Chrome's
+  GPU process along — which the C++ path, for all its leanness, does not do.
+- **Most of what looked like a GPU round-trip was Chrome checking its completion
+  fence lazily.** Polling `onSubmittedWorkDone` while the readback is pending is
+  worth ~5× on the identical computation, bit-identical output: 2.440 → 0.480 ms.
+  Both fence modes are a switch on the page, so the table above is an in-page
+  A/B rather than a comparison across builds.
+- **A dispatch costs ~0.05 ms**, from the unpolled pair (+0.100 ms for two extra
+  dispatches, at CV 1.5–1.7%). Dispatch was never what made the GPU slow here.
+
+Raw data and the statistics:
+[seven-case run](docs/measurements/2026-08-25-custom-chromium-seven-case.md).
+
+> [!IMPORTANT]
+> **This table is a custom Chromium build, and you cannot install it.** It is the
+> only browser that has `navigator.digitclassifier` at all, so it is the only one
+> that can measure all seven cases side by side. It is also three milestones
+> newer than the stock Chrome on the same phone and is not an official build, so
+> **none of these figures may be compared with a stock-Chrome figure.** The stock
+> measurements — which is where the reproducible-on-your-own-device numbers live,
+> and where most of the reasoning was done — are in
+> [**Findings**](docs/findings.md), kept in their own tables and never pooled
+> with these.
 
 > [!NOTE]
 > Much of [`docs/findings.md`](docs/findings.md) was measured with an **older,
-> budget-driven harness**, most of it at a 5 ms budget where the GPU rows
-> carried CVs of 45–55%. Those sections are kept as measured — they carry the
-> reasoning that produced the findings — but where a number there disagrees with
-> the table above, **the table above is the current one.** Figures from the two
-> harnesses must not be pooled.
+> budget-driven harness**, most of it at a 5 ms budget where the GPU rows carried
+> CVs of 45–55%. Those sections are kept as measured — they carry the reasoning
+> that produced the findings — but figures from the two harnesses must not be
+> pooled, and where an old number disagrees with a fixed-count one, the
+> fixed-count one is current.
 
-### Two browsers, deliberately kept apart
-
-Both are installed on the same OnePlus CPH2653, and **their numbers are never
-mixed in one table**:
-
-| | Browser | Used by |
-| --- | --- | --- |
-| **Stock** | Chrome **150.0.7871.188** (`com.android.chrome`) | the [performance report](docs/findings.md#performance-report), the [finding](docs/findings.md#finding-the-gpu-is-slower-than-the-cpu), the [second experiment](docs/findings.md#second-experiment-direct-webgpu) |
-| **Custom** | locally built Chromium **153.0.8005.0** release (`org.chromium.chrome`) | the [third experiment](docs/findings.md#third-experiment-a-model-built-into-the-browser) |
-
-The custom build is the only one that can run `browser-model-api.html` at all —
-`navigator.digitclassifier` does not exist in a shipping browser. It is three
-milestones newer than the stock Chrome, and not an official build, so **a figure
-from one section cannot be compared with a figure from the other.** Comparisons
-within a section are sound; across sections they are not, and where the two
-disagree that is called out rather than reconciled.
-
-Three experiments went into that table, and two of them reversed a conclusion
-of the one before — including the ~3 ms "GPU round-trip" that turned out to be
-Chrome checking its completion fence lazily. The full account is in
-[**Findings**](docs/findings.md): the
-[numbers](docs/findings.md#performance-report), the
-[reason](docs/findings.md#finding-the-gpu-is-slower-than-the-cpu) and the
-[method](docs/findings.md#the-experiment).
+Three experiments produced the table above, and each reversed a conclusion of the
+one before. The full account is in [**Findings**](docs/findings.md): the
+[first measurements](docs/findings.md#performance-report), the
+[reason the GPU loses](docs/findings.md#finding-the-gpu-is-slower-than-the-cpu),
+the [model inside the browser](docs/findings.md#third-experiment-a-model-built-into-the-browser),
+and the [method](docs/findings.md#the-experiment).
 
 ## Running it
 

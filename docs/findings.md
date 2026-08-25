@@ -9,6 +9,8 @@ ones rather than replacing them. Where a figure here disagrees with the
 [README's results table](../README.md#results), **the README is the current
 one** — and the correction is stated where it was found, not silently applied.
 
+- [Two browsers, deliberately kept apart](#two-browsers-deliberately-kept-apart)
+  — which figures may be compared with which, and why
 - [Performance report](#performance-report) — the first measurements, and the
   DVFS protocol that made them reproducible
 - [Finding: the GPU is slower than the CPU](#finding-the-gpu-is-slower-than-the-cpu)
@@ -27,6 +29,27 @@ Raw data for everything below is in [`measurements/`](measurements/), one file
 per session, each stating its device, browser and protocol. The API stack behind
 each page is diagrammed in [`architecture.md`](architecture.md).
 
+## Two browsers, deliberately kept apart
+
+Both are installed on the same OnePlus CPH2653, and **their numbers are never
+mixed in one table**:
+
+| | Browser | Used by |
+| --- | --- | --- |
+| **Stock** | Chrome **150.0.7871.188** (`com.android.chrome`) | most of this document: the [performance report](#performance-report), the [finding](#finding-the-gpu-is-slower-than-the-cpu), the [second experiment](#second-experiment-direct-webgpu) |
+| **Custom** | locally built Chromium **153.0.8005.0** release (`org.chromium.chrome`) | the [third experiment](#third-experiment-a-model-built-into-the-browser), and the [README's results table](../README.md#results) |
+
+The custom build is the only one that can run `browser-model-api.html` at all —
+`navigator.digitclassifier` does not exist in a shipping browser — which is why
+the seven-case table the README publishes is taken on it. It is three milestones
+newer than the stock Chrome, and not an official build, so **a figure from one
+browser cannot be compared with a figure from the other.** Comparisons within a
+browser are sound; across browsers they are not, and where the two disagree that
+is called out rather than reconciled.
+
+The stock-Chrome figures are the ones a reader can reproduce on a phone they
+own; they live in the sections below, in their own tables.
+
 ---
 
 ## Performance report
@@ -44,7 +67,7 @@ GPU first then CPU in every run.
 
 > These are stock-Chrome numbers. The custom-Chromium ones live in the
 > [third experiment](#third-experiment-a-model-built-into-the-browser) and are
-> kept separate on purpose — see [two browsers](../README.md#two-browsers-deliberately-kept-apart).
+> kept separate on purpose — see [two browsers](#two-browsers-deliberately-kept-apart).
 
 ### One-time costs, paid before a backend can classify anything
 
@@ -663,6 +686,19 @@ Both pages were later re-measured at 1000 runs per sample, where both are firmly
 on their plateaus — LiteRT **1.610 ms** (CV 2.1%) against direct WebGPU **3.270
 ms** (CV 1.9%), a ratio of **2.03×**. The 100-run figures moved by +0.6% and
 +0.9% respectively, so nothing here depended on the count.
+
+> [!IMPORTANT]
+> **These are the most rigorous stock-Chrome numbers in this document, and the
+> hand-written row is out of date.** The 3.270 ms predates both the two-submit
+> change and the fence poll; on stock Chrome the polled page measured ~0.38 ms
+> over localhost ([data](measurements/2026-08-24-webgpu-mapasync-poll.md)), which
+> would put it *ahead* of LiteRT rather than 2.03× behind. **No stock-Chrome,
+> Pages-served, 3-session re-measure of the polled page exists yet** — that
+> measurement is the outstanding one, and until it is taken this table stays as
+> measured rather than being edited toward the expected answer. The equivalent
+> comparison on the custom build is in
+> [the four cases](#the-four-cases-and-what-the-floor-actually-is), where the
+> polled page beats LiteRT by 2.9× and the unpolled one loses to it by 1.73×.
 
 So the second experiment's headline claim is reversed: **removing LiteRT.js does
 not buy 1.34×, it costs 1.93×.** The runtime this page was written to beat is

@@ -13,16 +13,20 @@ small (~0.6 MFLOP), because per-call GPU overhead dwarfs the arithmetic.
 Most of what looked like a ~3 ms GPU round-trip was Chrome servicing its fence
 lazily; polling for it (see `webgpu.html` below) put the hand-written page at
 ~0.4 ms, *past* LiteRT.js's ~1.6 ms, so the CPU's lead over the best GPU path is
-now **~4×, not 17.9×**. The README's **Results** table still shows the pre-fix
-**3.270 ms** behind an explicit `NOTE`, because that row is the only one measured
-from the Pages site under the full 3-session protocol. The stock-Chrome
-fence-poll data is localhost, two sessions
-(`docs/measurements/2026-08-24-webgpu-mapasync-poll.md`); the 3-session
-re-measure is on the **custom build** and cannot fill that row
-(`docs/measurements/2026-08-24-fence-poll-3session.md`). Read that NOTE and
-*"The round-trip that wasn't: Chrome's lazy fence"* in `docs/findings.md` before
-repeating any headline figure — it corrects two of the document's own earlier
-claims.
+now **~4×** on stock and **5.3×** on the custom build, *not* 17.9×.
+
+**The README's Results table is the custom-build seven-case run**
+(`docs/measurements/2026-08-25-custom-chromium-seven-case.md`): all four
+`webgpu.html` cases plus LiteRT's two backends and `navigator.digitclassifier`,
+measured together. Stock-Chrome tables live in `docs/findings.md` and are never
+pooled with it. **The outstanding measurement** is a stock-Chrome, Pages-served,
+3-session re-measure of the *polled* page: the stock tables in `docs/findings.md`
+still carry **3.270 ms** for the hand-written page, which predates the poll, and
+the only stock fence-poll data is localhost over two sessions
+(`docs/measurements/2026-08-24-webgpu-mapasync-poll.md`). Read
+*"The round-trip that wasn't: Chrome's lazy fence"* and *"The four cases"* in
+`docs/findings.md` before repeating any headline figure — between them they
+correct three of that document's own earlier claims.
 
 | Page | Implementation |
 | --- | --- |
