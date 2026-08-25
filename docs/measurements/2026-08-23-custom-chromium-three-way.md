@@ -16,8 +16,8 @@ debug configuration · **Content** served from
 
 All three pages in this repository run the same model. This measures them
 against the same drawn digit with the same timing harness, under the fixed-clock
-protocol the [README](../../README.md#getting-numbers-that-reproduce) already
-uses.
+protocol the [findings
+doc](../findings.md#getting-numbers-that-reproduce) already uses.
 
 > [!IMPORTANT]
 > **The debug build did not merely run slower — it classified the digit

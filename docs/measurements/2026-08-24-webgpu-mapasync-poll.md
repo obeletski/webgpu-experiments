@@ -110,6 +110,6 @@ loop exits on device loss because `mapAsync` settles either way.
 ## Method note
 
 Localhost serving is the documented uncommitted-code flow; the published-site
-3-session protocol should re-measure before the README's "Current numbers" table
-is rewritten. The probe page and the CDP drivers were scratch files, deleted
+3-session protocol should re-measure before the README's [results
+table](../../README.md#results) is rewritten. The probe page and the CDP drivers were scratch files, deleted
 after the run.

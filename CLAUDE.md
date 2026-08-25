@@ -9,16 +9,33 @@ their cost can be compared; the digit classifier is the vehicle, not the subject
 The thesis the repo defends is that **the CPU beats the GPU** for a model this
 small (~0.6 MFLOP), because per-call GPU overhead dwarfs the arithmetic.
 
+**The thesis holds but its margin has moved — do not quote 17.9× as current.**
+Most of what looked like a ~3 ms GPU round-trip was Chrome servicing its fence
+lazily; polling for it (see `webgpu.html` below) put the hand-written page at
+~0.4 ms, *past* LiteRT.js's ~1.6 ms, so the CPU's lead over the best GPU path is
+now **~4×, not 17.9×**. The README's **Results** table still shows the pre-fix
+**3.270 ms** behind an explicit `NOTE`, because that row is the only one measured
+from the Pages site under the full 3-session protocol. The stock-Chrome
+fence-poll data is localhost, two sessions
+(`docs/measurements/2026-08-24-webgpu-mapasync-poll.md`); the 3-session
+re-measure is on the **custom build** and cannot fill that row
+(`docs/measurements/2026-08-24-fence-poll-3session.md`). Read that NOTE and
+*"The round-trip that wasn't: Chrome's lazy fence"* in `docs/findings.md` before
+repeating any headline figure — it corrects two of the document's own earlier
+claims.
+
 | Page | Implementation |
 | --- | --- |
 | `index.html` | LiteRT.js, with a CPU (wasm) / GPU (webgpu) switcher |
 | `webgpu.html` | the `.tflite` parsed in JS, hand-written WGSL, fused vs per-layer |
 | `browser-model-api.html` | `navigator.digitclassifier`, a Web API in a custom Chromium build |
 
-**The README is the deliverable.** It carries the findings, the tables and the
-reasoning; the pages only produce the numbers. A measurement that changes a
-conclusion has to change the README too, and its raw data has to land in
-`docs/measurements/`.
+**The prose is the deliverable, not the pages.** `README.md` is the front page —
+what the repo is, how to run it, and the current results table;
+`docs/findings.md` carries the experiments, the reasoning and every correction.
+The pages only produce the numbers. A measurement that changes a conclusion has
+to change `docs/findings.md` (and the README's table when the headline moves),
+and its raw data has to land in `docs/measurements/`.
 
 ## Commands
 
@@ -76,7 +93,10 @@ Page-specific:
   (one `dispatchWorkgroups(1)` at `@workgroup_size(128)`, hidden layer stays in
   `var<workgroup>`) and **per-layer** (three dispatches through storage buffers,
   how a general runtime must work). The difference between the two *is* the
-  measurement of dispatch cost.
+  measurement of dispatch cost. Its `run()` is **two submits (compute, then the
+  readback copy) plus an `onSubmittedWorkDone()` poll issued from each fresh
+  macrotask while the `mapAsync` is pending** — that shape is load-bearing, see
+  the rules below.
 - `browser-model-api.html` — fetches nothing at all; hands 2352 floats to C++
   inside Blink. Detects which of {build, flag, secure context} is missing and
   says so rather than failing silently.
@@ -91,8 +111,23 @@ Page-specific:
   browsers are involved (below) and they are three milestones apart.
 - **Label every measurement with its browser, device and protocol.** Raw data
   goes in `docs/measurements/`; the README summarises and links to it.
-- Report what was measured, including the parts that undercut the thesis. The
-  README already carries a finding that reverses one of its own conclusions.
+- **Do not tidy `run()` in `webgpu.html`.** It looks redundant and is not: the
+  poll is worth ~7× (2.7 ms → ~0.4 ms) and every neighbouring shape was measured
+  and is worse — one `onSubmittedWorkDone` next to the submits changes nothing
+  (it rides the same flush), polling with empty submits is 9× *worse* (24.5 ms),
+  and task churn without a GPU poke is worse too (5.9 ms). Splitting the one
+  submit into two was itself worth ~0.5 ms before the poll landed. Nothing is
+  pipelined; each call still waits for its own result and the floats stay
+  bit-identical.
+- **Kernel micro-optimisation is not where the time is.** Coalescing the `W1`
+  read — 128 lanes 9.4 KB apart made contiguous — moved batch-1 fused by
+  +0.02 ms, i.e. nothing, because the weight read is off the critical path
+  ([data](docs/measurements/2026-08-24-coalesce-w1-ab.md)). Measure the
+  round-trip, not the arithmetic, before optimising either.
+- Report what was measured, including the parts that undercut the thesis.
+  `docs/findings.md` is written in the order the work happened and already
+  carries findings that reverse its own earlier conclusions; correct in place,
+  where the correction was found, rather than rewriting history.
 
 ## The test device and its two browsers
 
@@ -190,7 +225,7 @@ so the two do not interfere.
 
 ## Measuring
 
-Protocol, from the README's "Getting numbers that reproduce":
+Protocol, from "Getting numbers that reproduce" in `docs/findings.md`:
 
 ```sh
 adb shell cmd power set-fixed-performance-mode-enabled true   # unrooted: no governor pinning
@@ -276,20 +311,31 @@ fixed-count harness cannot go in a table with them.
 Fixed-performance mode **only fixes the CPU**; GPU noise is under-sampling, not
 DVFS.
 
-The driver page and POST collector the README describes (`adb reverse
+The driver page and POST collector `docs/findings.md` describes (`adb reverse
 tcp:8099 tcp:8099`) are **scratch files, deliberately not committed** — rebuilt
-per experiment. The README documents the method, not a script to run.
+per experiment. The doc records the method, not a script to run.
 
 ## Where things live
 
+- `README.md` — the front page: what this is, the three pages, the current
+  results table, how to run it, and an index of the docs. Keep it short; new
+  reasoning goes in `docs/findings.md`, not here.
+- `docs/findings.md` — the three experiments and everything they measured, in
+  the order the work happened. This is where a new finding gets written up.
 - `docs/measurements/` — raw data behind every published number, one file per
-  measurement session, each stating device, browser and protocol.
+  measurement session, each stating device, browser and protocol. A `.json` is
+  either self-describing (a `device` / `browser` / `protocol` header) or has a
+  sibling `.md` that carries the header and the prose — the JSON files are not
+  self-describing, so a bare one is a bug.
+- `wgsl-explainer.md` — how the two hand-written WGSL kernels were derived from
+  the model's tensor shapes, line by line.
 - `docs/architecture.md` — "Three Paths to One Inference": the API stack each
   page uses, diagrammed, plus an a-priori prediction of memory and time written
   *before* the measurements. It gets memory right and time backwards on purpose;
   that gap is the point.
 - `docs/superpowers/specs/`, `docs/superpowers/plans/` — the design spec and
-  implementation plan for the direct-WebGPU experiment.
+  implementation plan for the direct-WebGPU experiment, plus the plan for the
+  `W1` coalescing A/B (whose prediction the measurement refuted).
 
 ## Conventions
 

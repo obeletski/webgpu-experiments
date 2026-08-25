@@ -9,8 +9,8 @@ for the whole session, restored afterwards.
 
 > [!NOTE]
 > This is stock Chrome, the same browser as the [performance
-> report](../../README.md#performance-report) and the [second
-> experiment](../../README.md#second-experiment-direct-webgpu) — **not** the
+> report](../findings.md#performance-report) and the [second
+> experiment](../findings.md#second-experiment-direct-webgpu) — **not** the
 > custom Chromium 153 of the
 > [three-way comparison](2026-08-23-custom-chromium-three-way.md).
 >
@@ -94,7 +94,7 @@ range 3.16 – 3.34, session medians 3.280 / 3.250 / 3.290.
 
 ## Method
 
-Per the README's [protocol](../../README.md#getting-numbers-that-reproduce):
+Per the [documented protocol](../findings.md#getting-numbers-that-reproduce):
 fixed-performance mode on for the whole session and restored at the end, Chrome
 **force-stopped between every page load**, a 4-second warm-up burst of Classify
 activations before any sample, and the same stroke drawn on every page.
@@ -135,6 +135,6 @@ scratch file and is not committed.
 - **No CPU baseline in this block.** It was taken separately; see
   [the CPU baseline](2026-08-24-stock-chrome-cpu-baseline.md).
 - **Why LiteRT.js is faster remains unexplained.** The
-  [hypothesis](../../README.md#re-measured-the-ordering-really-does-invert) about
+  [hypothesis](../findings.md#re-measured-the-ordering-really-does-invert) about
   per-readback buffer allocation is still untested; this measurement only
   establishes that the difference is real and reproducible on a second browser.

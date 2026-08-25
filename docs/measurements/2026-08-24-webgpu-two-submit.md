@@ -58,5 +58,5 @@ one-behind result.
 > figures (3-session or 1000-run-plateau medians with CVs). The direction and
 > rough magnitude are clear and repeatable, but the exact ms and any ratio should
 > be re-measured with the full fixed-count protocol before they replace the
-> published tables. Until then the "Current numbers" table keeps its pre-fix
+> published tables. Until then the README's results table keeps its pre-fix
 > 3.270 ms figure, flagged as such.

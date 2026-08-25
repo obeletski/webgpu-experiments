@@ -30,7 +30,8 @@ The commit that replaced the harness's `TIMING_MIN_MS` time budget with a fixed
 A scratch driver page loaded each target in a same-origin iframe, waited for the
 model, synthesised pointer events to draw a vertical stroke (a `1`), clicked
 *Classify*, and POSTed the result line to a collector on `localhost:8097` — the
-method described in the README's [harness](../../README.md#the-harness) section.
+method described in the [findings doc's harness](../findings.md#the-harness)
+section.
 The driver and collector were scratch files and are not committed.
 
 `node_modules` was absent, so `index.html` took its **CDN fallback** for
@@ -38,8 +39,8 @@ LiteRT.js and its wasm (`esm.run` / `jsdelivr`), the same path GitHub Pages
 uses. `webgpu.html` fetched nothing external. WebGPU initialised because
 `localhost` is a secure context.
 
-Chrome flags, per the README's [headless GPU
-note](../../README.md#getting-a-gpu-in-headless-chrome):
+Chrome flags, per the [headless GPU
+note](../findings.md#getting-a-gpu-in-headless-chrome):
 
 ```
 --headless=new --no-sandbox --enable-unsafe-webgpu

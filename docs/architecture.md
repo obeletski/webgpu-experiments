@@ -388,11 +388,14 @@ The compute and the readback became two separate submits (**~2.75 ms** fused,
 wait turned out to be **Chrome's lazy fence servicing, not a round-trip**:
 left alone, the GPU process takes ~2.5 ms to notice that microseconds of work
 have finished. Polling `onSubmittedWorkDone` from each fresh task while the
-`mapAsync` is pending forces the check, and a 3-session re-measure lands the
-median at **~0.46 ms fused / ~0.40 ms per-layer**, past LiteRT's ~1.57 ms,
-bit-identical output, each call still waiting for its own result
-([data](measurements/2026-08-24-webgpu-mapasync-poll.md),
-[3-session](measurements/2026-08-24-fence-poll-3session.json)). The one-behind
+`mapAsync` is pending forces the check: on **stock Chrome** the median lands at
+**~0.38 ms fused / ~0.41 ms per-layer** across two sessions, past LiteRT's
+~1.6 ms, bit-identical output, each call still waiting for its own result
+([data](measurements/2026-08-24-webgpu-mapasync-poll.md)). A 3-session re-measure
+on the **custom Chromium 153 build** — a separate browser, never pooled with the
+stock figures — reproduces the effect at ~0.46 ms fused / ~0.40 ms per-layer
+against that build's own LiteRT at 1.57 ms
+([data](measurements/2026-08-24-fence-poll-3session.md)). The one-behind
 pipeline (the 0.48 ms) remains deliberately out of the page — the poll is not
 pipelining; it accelerates a single one-shot classification the same way. The
 CPU's margin over the best GPU path narrows from 17.9× to ~4× and the thesis
@@ -503,17 +506,21 @@ sequenceDiagram
 | --- | --- | ---: | ---: |
 | **Before** | compute + copy, one submit, `await mapAsync` | ~3.26 ms | ~2% |
 | Two-submit | compute; then copy; `await mapAsync` | ~2.75 ms | — |
-| **Fence-poll** | + `onSubmittedWorkDone()` per task while map pending | **~0.46 ms** | **~45%** |
+| **Fence-poll** | + `onSubmittedWorkDone()` per task while map pending | **~0.38 ms** | **5 – 39%** |
 
 Two honest caveats live in that table. First, the fence-poll is **not free**: the
 loop spins the CPU issuing fence queries until the map lands, so the "fast GPU
 path" now spends CPU to hurry the GPU along. Second, the **CV**: the fence-poll
 median reproduces across sessions but its spread is wide and scheduling-dependent
-(per-layer ~56%, a ~1 ms tail every session), because the poll's latency rides
-whatever else the event loop is doing. It is at once the fastest GPU path measured
-here and the least settled number in this document — both are true, and it is also
-specific to stock Chrome on this Adreno; another browser or driver may service the
-fence differently.
+— a ~1 ms tail in most sessions — because the poll's latency rides whatever else
+the event loop is doing. The custom-build [3-session
+re-measure](measurements/2026-08-24-fence-poll-3session.md) makes that plainer
+still: same median to within ~0.08 ms, but CV ~45% fused and ~56% per-layer. It
+is at once the fastest GPU path measured here and the least settled number in
+this document — both are true, and both are Chrome on this Adreno; another
+browser or driver may service the fence differently.
+
+All three rows above are **stock Chrome 150**, so they compare with each other.
 
 ### 7.5 And LiteRT.js? It avoids the delay without fixing it
 
